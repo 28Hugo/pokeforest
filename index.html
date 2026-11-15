@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>PokéForest</title>
+  <meta name="description" content="Fokus-Training mit deinem Pokémon-Team – die Web-Version von PokéForest für iPhone und iPad.">
+  <meta name="theme-color" content="#1F5E3B">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="PokéForest">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Nunito:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="trainer">
+        <span class="app-name">PokéForest</span>
+        <span id="coins" class="coins" aria-label="PokéMünzen"></span>
+      </div>
+      <div id="sync-dot" class="sync-dot" role="status"></div>
+    </header>
+
+    <main id="views">
+      <section id="view-train" class="view" aria-labelledby="tab-train"></section>
+      <section id="view-team" class="view" aria-labelledby="tab-team" hidden></section>
+      <section id="view-safari" class="view" aria-labelledby="tab-safari" hidden></section>
+      <section id="view-sync" class="view" aria-labelledby="tab-sync" hidden></section>
+    </main>
+
+    <nav class="tabbar" role="tablist" aria-label="Bereiche">
+      <button id="tab-train" role="tab" data-view="train" aria-selected="true"><span class="tab-icon" aria-hidden="true">◎</span>Training</button>
+      <button id="tab-team" role="tab" data-view="team" aria-selected="false"><span class="tab-icon" aria-hidden="true">⬢</span>Team &amp; PC</button>
+      <button id="tab-safari" role="tab" data-view="safari" aria-selected="false"><span class="tab-icon" aria-hidden="true">✿</span>Safari</button>
+      <button id="tab-sync" role="tab" data-view="sync" aria-selected="false"><span class="tab-icon" aria-hidden="true">⇅</span>Sync</button>
+    </nav>
+  </div>
+
+  <dialog id="sheet" class="sheet"></dialog>
+  <dialog id="evolution" class="evolution"></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
