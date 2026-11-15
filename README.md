@@ -2,16 +2,15 @@
 
 Eine Web-App, die denselben Spielstand wie die Mac-App nutzt. Kein Build-Schritt: reine HTML/CSS/JS-Dateien.
 
-## Was sie kann
-- Fokus-Training mit deinem Partner (Ring-Timer, 5–180 Min), läuft weiter, wenn du die App schließt
-- Team & PC: Partner wählen, Team ⇄ PC, Tauschen, EP-Teiler
-- Expeditionen starten, zurückrufen, abholen
-- Pokémon des Tages (+50 % EP), Level-ups, Entwicklungs-Animation
-- Safari-Wiese mit deinem Team
-- Strenger Modus: Verlassen der App länger als 15 Sekunden beendet die Runde
-- Offline nutzbar nach dem ersten Öffnen
+## Was sie kann (wie die Mac-App)
+- **Training:** eigenes Pokémon (Lv. 1–100, Entwicklungen, Mega) oder wilde Begegnung (#1–#1025, vier Seltenheiten), Ring-Timer 5–180 Min, Pomodoro-Ketten, Ewigstein-Pause, Beeren, Knursp, Fokus-Tags, Notizen, Vorlagen, Runden-Rückblick. Läuft weiter, wenn du die App schließt.
+- **Safari:** gemalte Wiese pro Gebiet mit Wetter und Tageszeit, Team & PC (Boxen, Sortieren, Suchen, Tauschen, EP-Teiler), Expeditionen, Statistik (Heute/Woche/Monat/Gesamt, 28-Tage-Karte, Fokus-Tags), Logbuch.
+- **Trainer:** 30 Orden, Raids, Tagesquests, Eier, Pension, Forschung mit Regionen, Wochen-Liga mit Rivalen, Pokédex, Profil und Profilbilder.
+- **Shop:** Linien freischalten, Exemplare adoptieren, Beeren, Knursp-Bäckerei, Wunder-Tausch, Profilbild-Kapsel.
+- **Mehr:** PokéRadio mit Atmosphäre-Mixer, Tagesziel, Erscheinungsbild, strenger Modus, Fokus-Tags, Sync.
+- Offline nutzbar nach dem ersten Öffnen.
 
-Noch nicht in der Web-App: wilde Begegnungen, Shop, Raids, Orden, Radio.
+Nur am Mac: Apps und Websites sperren (Fokus-Wächter), Mini-HUD, Menüleiste. In der Web-App ersetzt der strenge Modus den Fokus-Wächter: Wer die App länger als 15 Sekunden verlässt, beendet die Runde.
 
 ## Abgleich mit dem Mac
 Beide Seiten nutzen `iCloud Drive › PokéForest › PokéForest_Sync.json`.
@@ -27,9 +26,12 @@ python3 -m http.server 8765 --directory web
 ```
 Dann http://localhost:8765 öffnen.
 
-## Veröffentlichen (GitHub Pages, kostenlos)
-1. Ein GitHub-Repository anlegen und den Inhalt des Ordners `web/` hochladen.
-2. Repository › Settings › Pages › Branch `main`, Ordner `/ (root)`.
-3. Die angezeigte Adresse auf iPhone/iPad in Safari öffnen › Teilen › „Zum Home-Bildschirm“.
+## Veröffentlichen
+```bash
+scripts/publish_web.sh "Was sich geändert hat"
+```
+Die App liegt dann unter https://28hugo.github.io/pokeforest/. Auf iPhone/iPad in Safari öffnen › Teilen › „Zum Home-Bildschirm“.
+
+Neue Pokémon-Daten aus der Mac-App übernehmen: `scripts/export_web_catalog.sh`.
 
 Sprites kommen von https://github.com/PokeAPI/sprites. Pokémon und zugehörige Namen/Grafiken gehören ihren Rechteinhabern; PokéForest ist ein inoffizielles Fanprojekt.

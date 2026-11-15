@@ -1,7 +1,7 @@
 // Offline support: the app shell is cached on install, sprites and fonts on first use.
-const SHELL = 'pokeforest-shell-v1';
+const SHELL = 'pokeforest-shell-v3';
 const MEDIA = 'pokeforest-media-v1';
-const FILES = ['./', 'index.html', 'style.css', 'app.js', 'game.js', 'manifest.webmanifest', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'];
+const FILES = ['./', 'index.html', 'style.css', 'app.js', 'game.js', 'ui.js', 'catalog.json', 'views/training.js', 'views/safari.js', 'views/painting.js', 'views/trainer.js', 'views/shop.js', 'views/more.js', 'manifest.webmanifest', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(SHELL).then((cache) => cache.addAll(FILES)).then(() => self.skipWaiting()));
@@ -15,6 +15,7 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (event.request.method !== 'GET') return;
+  if (url.hostname === 'pokeapi.co' || url.hostname.includes('youtube')) return;
   const isMedia = url.hostname === 'raw.githubusercontent.com' || url.hostname.endsWith('gstatic.com') || url.hostname === 'fonts.googleapis.com';
   if (isMedia) {
     // Sprites and fonts never change: cache first.

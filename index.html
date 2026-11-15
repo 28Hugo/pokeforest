@@ -24,21 +24,15 @@
         <span class="app-name">PokéForest</span>
         <span id="coins" class="coins" aria-label="PokéMünzen"></span>
       </div>
-      <div id="sync-dot" class="sync-dot" role="status"></div>
+      <div class="top-right"><div id="goal" class="goal" role="img" aria-label="Tagesziel"></div><div id="sync-dot" class="sync-dot" role="status"></div></div>
     </header>
-
-    <main id="views">
-      <section id="view-train" class="view" aria-labelledby="tab-train"></section>
-      <section id="view-team" class="view" aria-labelledby="tab-team" hidden></section>
-      <section id="view-safari" class="view" aria-labelledby="tab-safari" hidden></section>
-      <section id="view-sync" class="view" aria-labelledby="tab-sync" hidden></section>
-    </main>
-
-    <nav class="tabbar" role="tablist" aria-label="Bereiche">
-      <button id="tab-train" role="tab" data-view="train" aria-selected="true"><span class="tab-icon" aria-hidden="true">◎</span>Training</button>
-      <button id="tab-team" role="tab" data-view="team" aria-selected="false"><span class="tab-icon" aria-hidden="true">⬢</span>Team &amp; PC</button>
-      <button id="tab-safari" role="tab" data-view="safari" aria-selected="false"><span class="tab-icon" aria-hidden="true">✿</span>Safari</button>
-      <button id="tab-sync" role="tab" data-view="sync" aria-selected="false"><span class="tab-icon" aria-hidden="true">⇅</span>Sync</button>
+    <main id="view" class="view"></main>
+    <nav class="tabbar" aria-label="Bereiche">
+      <button data-action="tab" data-view="train" aria-selected="true"><span class="tab-icon" aria-hidden="true">◎</span>Training</button>
+      <button data-action="tab" data-view="safari" aria-selected="false"><span class="tab-icon" aria-hidden="true">✿</span>Safari</button>
+      <button data-action="tab" data-view="trainer" aria-selected="false"><span class="tab-icon" aria-hidden="true">★</span>Trainer</button>
+      <button data-action="tab" data-view="shop" aria-selected="false"><span class="tab-icon" aria-hidden="true">◈</span>Shop</button>
+      <button data-action="tab" data-view="more" aria-selected="false"><span class="tab-icon" aria-hidden="true">≡</span>Mehr</button>
     </nav>
   </div>
 
