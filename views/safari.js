@@ -5,10 +5,10 @@ import { app, $, esc, art, pixel, ds, typeBadges, duration, num, bar, segmented,
 export function render(view) {
   const section = sub('safari', 'meadow');
   view.innerHTML = `<div class="row"><h2>Safari</h2><span class="muted small">${app.state.pokemonRoster.length} Begleiter</span></div>
-    ${segmented('safari', [['meadow', 'Lebensräume'], ['team', 'Team & PC'], ['stats', 'Statistik'], ['log', 'Logbuch']])}
+    ${segmented('safari', [['meadow', 'Lebensräume'], ['team', 'Team & PC'], ['dig', `Untergrund${(app.state.undergroundCharges ?? 1) > 0 ? ` (${app.state.undergroundCharges ?? 1})` : ''}`], ['stats', 'Statistik'], ['log', 'Logbuch']])}
     <div id="safari-body"></div>`;
   const body = $('#safari-body', view);
-  ({ meadow: renderHabitats, team: renderTeam, stats: renderStats, log: renderLog })[section](body);
+  ({ meadow: renderHabitats, team: renderTeam, dig: renderDig, stats: renderStats, log: renderLog })[section](body);
 }
 
 // MARK: Lebensräume (Sinnoh habitats with DS battle backdrops)
@@ -32,7 +32,6 @@ function renderHabitats(body) {
   const fullCount = H.places.filter((x) => G.habitatFull(s, x)).length;
   const partner = G.findPokemon(s, s.selectedPokemonID);
   const boosted = G.partnerHabitatBonus(s, { mode: 'owned' });
-  const b = biome();
   body.innerHTML = `
     <p class="small muted">Lass PC-Pokémon an Orten wohnen, die zu ihrem Typ passen. Sie trainieren bei jeder Runde mit. · ${total} Bewohner · ${fullCount}/${H.places.length} voll</p>
     <div class="habitat-chips" role="tablist" aria-label="Lebensräume">${H.places.map((x) => { const ok = G.habitatUnlocked(s, x); const n = G.residentIDs(s, x).length;
@@ -67,8 +66,7 @@ function renderHabitats(body) {
         <div><strong>${esc(d.name)}</strong> <span class="small muted">Lv. ${d.level}</span>${typeBadges(G.pokemonTypes(p), true)}</div>
         <button class="pill quiet" data-action="inspect" data-id="${p.id}">Steckbrief</button>
         <button class="icon-btn small" data-action="habitat-leave" data-id="${p.id}" aria-label="${esc(d.name)} zurück in den PC">↩</button></div>`; }).join('')}</div>` : ''}
-    <div class="panel row travel-row"><img src="${pixel(b.mascotID)}" alt=""><div><strong>Reiseziel für wilde Begegnungen</strong><p class="small muted">${esc(b.title)} · ${esc(b.region)}</p></div>
-      <button class="pill quiet" data-action="biomes">Gebiet wechseln</button></div>`;
+`;
 }
 function habitatPicker() {
   const s = app.state;
@@ -94,15 +92,60 @@ function biomeSheet() {
     <button class="pill quiet" data-action="close">Schließen</button>`);
 }
 
+// MARK: Untergrund (digging like in Diamant/Perl)
+function renderDig(body) {
+  const s = app.state;
+  const U = G.C.underground;
+  const wall = app.meta.digWall;
+  const charges = s.undergroundCharges ?? 1;
+  const tool = app.meta.digTool || 'pickaxe';
+  let content;
+  if (wall) {
+    const found = G.revealedItems(wall);
+    const cells = [];
+    for (let y = 0; y < U.rows; y++) for (let x = 0; x < U.columns; x++) {
+      const layers = G.wallLayers(wall, x, y);
+      const item = layers === 0 ? G.wallItemAt(wall, x, y) : null;
+      cells.push(`<button class="dig-cell l${Math.min(layers, 4)}" style="${item ? `background:${G.treasureOf(item).colorHex}` : ''}" data-action="dig" data-x="${x}" data-y="${y}" aria-label="${layers ? `Fels, ${layers} Schichten` : item ? `Freigelegt: ${esc(G.treasureOf(item).name)}` : 'Freigelegt'}"></button>`);
+    }
+    const art = found.map((p) => { const t = G.treasureOf(p);
+      return `<div class="dig-find" style="left:${(p.x / U.columns) * 100}%;top:${(p.y / U.rows) * 100}%;width:${(t.width / U.columns) * 100}%;height:${(t.height / U.rows) * 100}%">
+        ${t.spriteID ? `<img src="${ds(t.spriteID)}" alt="">` : t.id === 'herzschuppe' ? '<span class="heart">♥</span>' : `<span class="sphere" style="--c:${t.colorHex}"></span>`}<small>${esc(t.name)}</small></div>`; }).join('');
+    content = `
+      <div class="row"><div class="segmented small">${U.tools.map((t) => `<button data-action="dig-tool" data-id="${t.id}" aria-selected="${t.id === tool}">${t.id === 'pickaxe' ? '⛏' : '🔨'} ${esc(t.name)}</button>`).join('')}</div>
+        <div class="dig-stability"><small>Wand-Stabilität</small>${bar(wall.stability / U.maxStability, wall.stability < 15 ? 'var(--ball-red)' : 'var(--sun)')}</div></div>
+      <div class="dig-wall" style="--cols:${U.columns};--rows:${U.rows}">${cells.join('')}${art}</div>
+      <p class="small muted">Tippe auf die Wand. Spitzhacke kostet 1 Stabilität, der Hammer 2 und trifft mehr Fels. ${found.length} von ${wall.items.length} Funden liegen frei.</p>
+      <button class="pill wide" data-action="dig-finish">Fertig, Funde mitnehmen</button>`;
+  } else {
+    const r = app.meta.digResult;
+    content = `${r ? `<div class="panel"><h3>${r.collapsed ? 'Die Wand ist eingestürzt!' : 'Grabung beendet'}</h3><p>${esc(G.digSummary(r))}</p>${r.fossils.length ? '<p class="small muted">Deine Fossil-Pokémon warten im PC.</p>' : ''}</div>` : ''}
+      <button class="pill wide" data-action="dig-start" ${charges > 0 ? '' : 'disabled'}>${charges > 0 ? 'Grabung starten' : `Noch ${G.minutesToNextDig(s)} Fokus-Minuten bis zur nächsten Grabung`}</button>`;
+  }
+  body.innerHTML = `
+    <p class="small muted">Pro ${U.minutesPerDig} Fokus-Minuten bekommst du eine Grabung. Leg Kugeln, Herzschuppen und Fossilien frei, bevor die Wand einstürzt.</p>
+    <div class="row"><strong>⛏ ${charges} / ${U.maxCharges} Grabungen bereit</strong>${charges < U.maxCharges ? `<span class="small muted">nächste in ${G.minutesToNextDig(s)} Min</span>` : ''}</div>
+    ${content}
+    <p class="small muted">Kleine Kugel +10 Münzen · Große Kugel +30 · Herzschuppe: eine Beere · Fossilien erwachen als Koknodon, Schilterus, Amonitas, Kabuto, Anorith, Liliep oder Aerodactyl.</p>`;
+}
+
 // MARK: Team & PC
 function renderTeam(body) {
   const s = app.state;
   const dayID = G.pokemonOfTheDay(s.pokemonRoster);
   app.meta.boxIndex = Math.min(app.meta.boxIndex || 0, s.pcBoxes.length - 1);
   const box = s.pcBoxes[app.meta.boxIndex];
-  const query = (app.meta.pcSearch || '').trim().toLowerCase();
-  const matches = (p) => !query || `${G.describe(p).name} ${p.species.displayName} ${p.species.stages.map((x) => x.name).join(' ')} #${G.describe(p).spriteID}`.toLowerCase().includes(query);
-  const hits = query ? s.pcBoxes.map((b, i) => [i, b.pokemonIDs.filter((id) => matches(G.findPokemon(s, id))).length]).filter(([, n]) => n) : [];
+ const query = (app.meta.pcSearch || '').trim().toLowerCase();
+  const typeFilter = Number(app.meta.pcType) || 0;
+  const fitOnly = !!app.meta.pcFit;
+  const filtering = !!query || !!typeFilter || fitOnly;
+  const matches = (p) => {
+    const types = G.pokemonTypes(p);
+    if (typeFilter && !types.includes(typeFilter)) return false;
+    if (fitOnly && !G.suggestedHabitat(s, p.id)) return false;
+    return !query || `${G.describe(p).name} ${p.species.displayName} ${p.species.stages.map((x) => x.name).join(' ')} ${types.map((n) => G.typeInfo(n).name).join(' ')} #${G.describe(p).spriteID}`.toLowerCase().includes(query);
+  };
+  const hits = filtering ? s.pcBoxes.map((b, i) => [i, b.pokemonIDs.filter((id) => matches(G.findPokemon(s, id))).length]).filter(([, n]) => n) : [];
   const badges = (p) => `${p.id === dayID ? '<span class="badge sun">☀︎</span>' : ''}${G.onExpedition(s, p.id) ? '<span class="badge trip">⛺</span>' : ''}${G.isNew(p) ? '<span class="badge new">Neu</span>' : ''}`;
   body.innerHTML = `
     <div class="row"><h3>Dein Team</h3><span class="muted">${s.teamPokemonIDs.length} / ${G.TEAM_SIZE}</span></div>
@@ -131,7 +174,11 @@ function renderTeam(body) {
       <select data-action="sort-box" aria-label="Box sortieren"><option value="">Sortieren …</option><option value="level">Level</option><option value="name">Name</option><option value="pokedex">Pokédex-Nr.</option><option value="newest">Neueste</option></select>
       <button class="pill quiet" data-action="add-box">+ Box</button>
     </div>
-    ${query ? `<div class="row wrap small">${hits.length ? 'Treffer:' : 'Keine Treffer im PC'} ${hits.map(([i, n]) => `<button class="chip ${i === app.meta.boxIndex ? 'on' : ''}" data-action="goto-box" data-index="${i}">${esc(s.pcBoxes[i].name)} (${n})</button>`).join('')}</div>` : ''}
+    <div class="row wrap">
+      <select data-action="pc-type" aria-label="Nach Typ filtern"><option value="">Alle Typen</option>${G.C.types.names.map((x) => `<option value="${x.id}" ${typeFilter === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
+      <label class="switch"><input type="checkbox" data-action="pc-fit" ${fitOnly ? 'checked' : ''}> Passt in Lebensraum</label>
+    </div>
+    ${filtering ? `<div class="row wrap small">${hits.length ? 'Treffer:' : 'Keine Treffer im PC'} ${hits.map(([i, n]) => `<button class="chip ${i === app.meta.boxIndex ? 'on' : ''}" data-action="goto-box" data-index="${i}">${esc(s.pcBoxes[i].name)} (${n})</button>`).join('')}</div>` : ''}
     <div class="pc-grid">
       ${Array.from({ length: G.BOX_CAPACITY }, (_, i) => box.pokemonIDs[i]).map((id) => {
         if (!id) return '<div class="cell"></div>';
@@ -215,6 +262,19 @@ export function handle(action, el) {
   switch (action) {
     case 'biomes': biomeSheet(); return true;
     case 'select-biome': s.selectedBiome = el.dataset.id; return done(true);
+    case 'dig-start': { const wall = G.startDig(s); if (wall) { meta.digWall = wall; meta.digResult = null; save(); saveMeta(); } app.render(); return true; }
+    case 'dig-tool': meta.digTool = el.dataset.id; saveMeta(); app.render(); return true;
+    case 'dig': {
+      if (!meta.digWall) return true;
+      const over = G.strikeWall(meta.digWall, Number(el.dataset.x), Number(el.dataset.y), meta.digTool || 'pickaxe');
+      if (over) return handle('dig-finish', el);
+      saveMeta(); app.render(); return true;
+    }
+    case 'dig-finish': {
+      if (!meta.digWall) return true;
+      meta.digResult = G.finishDig(s, meta.digWall); meta.digWall = null;
+      save(); saveMeta(); toast(G.digSummary(meta.digResult)); app.render(); return true;
+    }
     case 'habitat-pick': meta.habitatID = el.dataset.id; saveMeta(); app.render(); return true;
     case 'habitat-add': habitatPicker(); return true;
     case 'habitat-place': {
@@ -243,6 +303,8 @@ export function change(el) {
   const s = app.state; const meta = app.meta;
   switch (el.dataset.action) {
     case 'preview': s.safariPreviewEnabled = el.checked; if (!G.biomeUnlocked(s, G.C.biomes.find((b) => b.id === s.selectedBiome))) s.selectedBiome = G.C.biomes[0].id; save(); closeSheet(); app.render(); return true;
+    case 'pc-type': meta.pcType = el.value; saveMeta(); app.render(); return true;
+    case 'pc-fit': meta.pcFit = el.checked; saveMeta(); app.render(); return true;
     case 'sort-box': if (el.value) { G.sortBox(s, meta.boxIndex, el.value); save(); app.render(); } return true;
     case 'log-shiny': meta.logShiny = el.checked; saveMeta(); app.render(); return true;
   }

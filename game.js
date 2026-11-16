@@ -87,13 +87,18 @@ export function describe(pokemon) {
     name: pokemon.nickname || nameFor(s, stage),
     progress: maxLevel ? 1 : Math.min(1, Math.max(0, (pokemon.experience - start) / Math.max(1, end - start))),
     toNextLevel: maxLevel ? 0 : Math.max(0, end - pokemon.experience),
+    minutesToNextLevel: maxLevel ? 0 : focusMinutesFor(end - pokemon.experience),
     nextEvolutionName: nextEvolution ? nameFor(s, stage + 1) : null,
     nextEvolutionLevel: nextEvolution,
     toNextEvolution: nextEvolution ? Math.max(0, threshold(nextEvolution) - pokemon.experience) : null,
+    minutesToNextEvolution: nextEvolution ? focusMinutesFor(threshold(nextEvolution) - pokemon.experience) : null,
     raidBonus: Math.min(20, Math.floor(level / 25) * 5),
   };
 }
 const capXP = (xp) => Math.min(threshold(100), Math.max(0, xp));
+/** Since 5.4 every focus minute brings 2 EP. */
+export const EXP_PER_MINUTE = 2;
+export const focusMinutesFor = (xp) => Math.ceil(Math.max(0, xp) / EXP_PER_MINUTE);
 
 // MARK: History helpers (PlantedTree)
 export function evolvedStage(entry) {
@@ -333,6 +338,144 @@ export function typesOf(dexID) {
 export const typeInfo = (n) => C.types.names[n - 1];
 export const pokemonTypes = (p) => typesOf(describe(p).spriteID);
 
+/** Readable line name: "Evoli → Aquana (#133)" becomes "Evoli-Linie · Aquana". */
+export function lineTitle(species) {
+  let title = species.displayName.replace(/\s*\(#\d+\)/g, '');
+  const arrow = title.indexOf(' → ');
+  if (arrow >= 0) title = `${title.slice(0, arrow)}-Linie · ${title.slice(arrow + 3)}`;
+  return title;
+}
+
+// MARK: Type chart (TypeChart, RaidTypeMatchup)
+export const effectiveness = (attack, defense) => C.typeChart[attack - 1][defense - 1];
+export function bestEffectiveness(attacker, defender) {
+  if (!attacker.length || !defender.length) return 1;
+  return Math.max(...attacker.map((a) => defender.reduce((m, d) => m * effectiveness(a, d), 1)));
+}
+export const weaknesses = (defender) => Array.from({ length: 18 }, (_, i) => i + 1).filter((a) => defender.reduce((m, d) => m * effectiveness(a, d), 1) >= 2);
+export const MATCHUP = {
+  super: { multiplier: 2, label: 'Sehr effektiv! ×2 Raid-Schaden' },
+  neutral: { multiplier: 1, label: 'Normaler Raid-Schaden' },
+  weak: { multiplier: 0.5, label: 'Nicht sehr effektiv … ×0,5 Raid-Schaden' },
+};
+export function raidMatchup(attacker, defender) {
+  const best = bestEffectiveness(attacker, defender);
+  return best >= 2 ? 'super' : best < 1 ? 'weak' : 'neutral';
+}
+/** How the current partner fares against the active raid boss. */
+export function currentRaidMatchup(state, mode = 'owned') {
+  const p = findPokemon(state, state.selectedPokemonID);
+  return mode === 'owned' && p ? raidMatchup(pokemonTypes(p), typesOf(activeBoss(state).pokedexID)) : 'neutral';
+}
+
+// MARK: Jagdgebiet
+export function huntHabitat(state) {
+  const h = habitatByID(state.huntHabitatID);
+  return h && habitatUnlocked(state, h) ? h : null;
+}
+export function habitatFitCount(state) {
+  const free = C.habitats.places.filter((h) => habitatUnlocked(state, h) && !habitatFull(state, h));
+  if (!free.length) return 0;
+  return state.pokemonRoster.filter((p) => !state.teamPokemonIDs.includes(p.id) && !onExpedition(state, p.id) && !habitatOf(state, p.id)
+    && free.some((h) => habitatFits(h, p))).length;
+}
+export function suggestedHabitat(state, id) {
+  const p = findPokemon(state, id);
+  if (!p || state.teamPokemonIDs.includes(id) || habitatOf(state, id)) return null;
+  return C.habitats.places.find((h) => habitatUnlocked(state, h) && !habitatFull(state, h) && habitatFits(h, p)) ?? null;
+}
+/** Distinct Pokédex numbers among the Pokémon you own. */
+export function ownedPokedexCount(state) {
+  const ids = new Set();
+  for (const p of state.pokemonRoster) { const stage = describe(p).stage; p.species.stages.slice(0, stage).forEach((st) => { if (st.pokedexID <= 1025) ids.add(st.pokedexID); }); }
+  return ids.size;
+}
+
+// MARK: Untergrund (UndergroundWall, UndergroundRules)
+const U = () => C.underground;
+export function earnUndergroundCharges(state, minutes) {
+  let bank = (state.undergroundMinuteBank || 0) + Math.max(0, minutes);
+  let charges = state.undergroundCharges ?? 1;
+  while (bank >= U().minutesPerDig && charges < U().maxCharges) { charges += 1; bank -= U().minutesPerDig; }
+  state.undergroundCharges = charges;
+  state.undergroundMinuteBank = charges >= U().maxCharges ? Math.min(bank, U().minutesPerDig - 1) : bank;
+}
+export const minutesToNextDig = (state) => U().minutesPerDig - (state.undergroundMinuteBank || 0);
+export function generateWall() {
+  const { columns, rows } = U();
+  const hardness = Array(columns * rows).fill(2);
+  for (let n = 0; n < 6; n++) {
+    const cx = randomInt(0, columns - 1), cy = randomInt(0, rows - 1), r = randomInt(1, 3), delta = Math.random() < 0.5 ? 2 : -1;
+    for (let y = 0; y < rows; y++) for (let x = 0; x < columns; x++) if ((x - cx) ** 2 + (y - cy) ** 2 <= r * r) hardness[y * columns + x] = Math.min(4, Math.max(1, hardness[y * columns + x] + delta));
+  }
+  const pool = U().treasures.flatMap((t) => Array(t.weight).fill(t.id));
+  const items = []; const taken = new Set();
+  const count = randomInt(2, 4);
+  for (let attempt = 0; items.length < count && attempt < 200; attempt++) {
+    const treasureID = pick(pool);
+    const t = U().treasures.find((x) => x.id === treasureID);
+    const x = randomInt(0, columns - t.width), y = randomInt(0, rows - t.height);
+    const cells = t.cells.map(([dx, dy]) => (y + dy) * columns + x + dx);
+    if (cells.some((c) => taken.has(c))) continue;
+    cells.forEach((c) => taken.add(c));
+    items.push({ id: items.length, treasure: t.id, x, y });
+  }
+  return { hardness, items, stability: U().maxStability };
+}
+export const treasureOf = (placed) => U().treasures.find((t) => t.id === placed.treasure);
+export const placedCells = (placed) => treasureOf(placed).cells.map(([dx, dy]) => [placed.x + dx, placed.y + dy]);
+export const wallLayers = (wall, x, y) => wall.hardness[y * U().columns + x];
+export const wallItemAt = (wall, x, y) => wall.items.find((p) => placedCells(p).some(([cx, cy]) => cx === x && cy === y)) ?? null;
+export const isRevealed = (wall, placed) => placedCells(placed).every(([x, y]) => wallLayers(wall, x, y) === 0);
+export const revealedItems = (wall) => wall.items.filter((p) => isRevealed(wall, p));
+export function startDig(state) {
+  if ((state.undergroundCharges ?? 1) <= 0) return null;
+  state.undergroundCharges = (state.undergroundCharges ?? 1) - 1;
+  state.undergroundDigCount = (state.undergroundDigCount || 0) + 1;
+  return generateWall();
+}
+/** One strike; returns true when the dig is over (collapsed or everything found). */
+export function strikeWall(wall, x, y, toolID) {
+  if (wall.stability <= 0) return true;
+  const tool = U().tools.find((t) => t.id === toolID);
+  for (const [dx, dy, amount] of tool.pattern) {
+    const cx = x + dx, cy = y + dy;
+    if (cx < 0 || cy < 0 || cx >= U().columns || cy >= U().rows) continue;
+    wall.hardness[cy * U().columns + cx] = Math.max(0, wall.hardness[cy * U().columns + cx] - amount);
+  }
+  wall.stability = Math.max(0, wall.stability - tool.cost);
+  return wall.stability <= 0 || (wall.items.length > 0 && wall.items.every((p) => isRevealed(wall, p)));
+}
+export function finishDig(state, wall) {
+  const result = { treasures: [], coins: 0, berries: [], fossils: [], collapsed: wall.stability <= 0 };
+  state.berryInventory ||= {};
+  for (const placed of revealedItems(wall)) {
+    const t = treasureOf(placed);
+    result.treasures.push(t.name);
+    result.coins += t.coins;
+    if (t.id === 'herzschuppe') { const b = pick(C.berries); state.berryInventory[b.id] = (state.berryInventory[b.id] || 0) + 1; result.berries.push(b.name); }
+    if (t.fossil) {
+      addImportedSpecies(state, t.fossil);
+      const species = canonical(state, t.fossil);
+      state.unlockedSpeciesIDs ||= []; if (!state.unlockedSpeciesIDs.includes(species.id)) state.unlockedSpeciesIDs.push(species.id);
+      state.discoveredSpeciesIDs ||= []; if (!state.discoveredSpeciesIDs.includes(species.id)) state.discoveredSpeciesIDs.push(species.id);
+      state.pokemonRoster.push(newPokemon(species));
+      result.fossils.push(t.fossil.stages[0].name);
+    }
+  }
+  state.coins += result.coins;
+  normalizeTeam(state);
+  return result;
+}
+export function digSummary(r) {
+  if (!r.treasures.length) return r.collapsed ? 'Die Wand ist eingestürzt, bevor du etwas freilegen konntest.' : 'Diesmal war nichts dabei.';
+  const parts = [];
+  if (r.coins) parts.push(`+${r.coins} PokéMünzen`);
+  if (r.berries.length) parts.push(r.berries.join(', '));
+  if (r.fossils.length) parts.push(r.fossils.map((f) => `${f} erwacht aus dem Fossil!`).join(' '));
+  return `Gefunden: ${r.treasures.join(', ')}${parts.length ? ` · ${parts.join(' · ')}` : ''}`;
+}
+
 // MARK: Lebensräume (PokemonHabitat, HabitatRules)
 export const habitatByID = (id) => C.habitats.places.find((h) => h.id === id);
 export const habitatUnlocked = (state, h) => totalMinutes(state) >= h.requiredMinutes;
@@ -341,7 +484,7 @@ export const residentIDs = (state, h) => state.habitatResidents?.[h.id] || [];
 export const residentsOf = (state, h) => residentIDs(state, h).map((id) => findPokemon(state, id)).filter(Boolean);
 export const habitatFull = (state, h) => residentIDs(state, h).length >= C.habitats.capacity;
 export const habitatOf = (state, id) => C.habitats.places.find((h) => residentIDs(state, h).includes(id)) ?? null;
-export const residentExperience = (minutes) => (minutes > 0 ? Math.max(1, Math.floor((minutes * C.habitats.residentSharePercent) / 100)) : 0);
+export const residentExperience = (minutes) => (minutes > 0 ? Math.max(1, Math.floor((minutes * EXP_PER_MINUTE * C.habitats.residentSharePercent) / 100)) : 0);
 export function normalizeHabitats(state) {
   const team = new Set(state.teamPokemonIDs || []);
   const travelling = new Set((state.expeditions || []).map((t) => t.pokemonID));
@@ -436,13 +579,25 @@ export function refreshQuests(state, now = new Date()) {
   const questDay = state.questDate != null ? fromSwiftDate(state.questDate) : null;
   if (!questDay || !sameDay(questDay, now) || !state.dailyQuests?.length) {
     state.questDate = toSwiftDate(now);
-    state.dailyQuests = C.quests.map((q) => ({ ...q, id: newID(), currentValue: 0, isClaimed: false }));
+    state.dailyQuests = [...C.quests.map((q) => ({ ...q, id: newID(), currentValue: 0, isClaimed: false })), typeQuest(now)];
     return true;
   }
+  if (!state.dailyQuests.some((q) => q.kind === 'type')) { state.dailyQuests.push(typeQuest(now)); return true; }
   return false;
 }
-function recordQuest(q, { minutes, stage, mega, goalReached }) {
+/** The type of the day rotates through all 18 types (same day count as the Mac). */
+export function questType(date = new Date()) {
+  const day = Math.floor(startOfDay(date).getTime() / 86400000);
+  return ((day % 18) + 18) % 18 + 1;
+}
+function typeQuest(date) {
+  const typeID = questType(date);
+  return { id: newID(), title: `Trainiere ${C.typeQuest.minutes} Minuten mit einem ${typeInfo(typeID).name}-Pokémon`, targetValue: C.typeQuest.minutes,
+    currentValue: 0, rewardCoins: C.typeQuest.reward, isClaimed: false, kind: 'type', typeID };
+}
+function recordQuest(q, { minutes, stage, mega, goalReached, types = [] }) {
   if (q.isClaimed) return;
+  if (q.kind === 'type') { if (types.includes(q.typeID)) q.currentValue += Math.max(0, minutes); }
   if (q.kind === 'minutes') q.currentValue += Math.max(0, minutes);
   else if (q.kind === 'sessions') q.currentValue += 1;
   else if (q.kind === 'evolution') { if (stage >= 2) q.currentValue += 1; }
@@ -695,6 +850,7 @@ export function berryProblem(state, berryID, mode, running) {
   if (running) return 'Beeren werden vor dem Training ausgewählt.';
   if (state.activeBerryBuff) return 'Es ist bereits eine Beere bereitgelegt.';
   if (berryID === 'schillerpin' && mode !== 'wild') return 'Schiller-Essenz wirkt nur bei neuen wilden Begegnungen.';
+  if (berryID === 'himmihbeere' && mode !== 'owned') return 'Die Himmihbeere rettet die EP deines eigenen Pokémon, nicht bei wilden Begegnungen.';
   if (berryID === 'epbeere') {
     if (mode !== 'owned') return 'Die EP-Beere wirkt nur beim Training eines eigenen Pokémon.';
     const p = findPokemon(state, state.selectedPokemonID);
@@ -743,18 +899,26 @@ export function partnerEP(state, s) {
   if (!p) return { base: 0, bonus: 0, day: 0 };
   const pomodoroBonus = s.pomodoro ? s.minutes + (s.round === s.pomodoro.rounds ? planCompletionXP(s.pomodoro) : 0) : 0;
   const berry = state.activeBerryBuff === 'epbeere' ? s.minutes : 0;
-  const day = pokemonOfTheDay(state.pokemonRoster) === p.id ? Math.floor((s.minutes * DAY_BONUS_PERCENT) / 100) : 0;
-  const habitat = partnerHabitatBonus(state, s) ? Math.floor((s.minutes * C.habitats.fullHabitatBonusPercent) / 100) : 0;
-  return { base: s.minutes, bonus: pomodoroBonus + berry + day + habitat, day, habitat };
+  const base = s.minutes * EXP_PER_MINUTE;
+  const day = pokemonOfTheDay(state.pokemonRoster) === p.id ? Math.floor((base * DAY_BONUS_PERCENT) / 100) : 0;
+  const habitat = partnerHabitatBonus(state, s) ? Math.floor((base * C.habitats.fullHabitatBonusPercent) / 100) : 0;
+  return { base, bonus: (pomodoroBonus + berry) * EXP_PER_MINUTE + day + habitat, day, habitat };
 }
 export function coinPreview(state, s) {
   return trainingCoins(s.minutes, { mega: s.minutes >= 90, berry: state.activeBerryBuff === 'sananabeere', goldPoffin: s.poffin === 'gold', pomodoro: !!s.pomodoro });
 }
 
 // MARK: Wild encounters (NationalDexImporter)
-export function randomWildDexID(minutes, ownedLegends) {
+export function randomWildDexID(minutes, ownedLegends, huntTypes = []) {
   const tier = tierFor(minutes);
   const ordinary = Array.from({ length: 1025 }, (_, i) => i + 1).filter((id) => !C.legendary.has(id));
+  // Jagdgebiet: most encounters match the habitat's types, within the rarity of the round.
+  if (huntTypes.length && tier !== 3 && randomInt(1, 100) <= C.huntTypeChancePercent) {
+    const fits = (id) => typesOf(id).some((t) => huntTypes.includes(t));
+    const pool = tier === 0 ? [...C.wild.common, ...ordinary].filter(fits)
+      : tier === 1 ? [...C.wild.rare.filter((id) => !C.legendary.has(id)), ...ordinary].filter(fits) : C.wild.epic.filter(fits);
+    if (pool.length) return pick(pool);
+  }
   if (tier === 0) return randomInt(1, 100) <= 40 ? pick(ordinary) : pick(C.wild.common);
   if (tier === 1) return randomInt(1, 100) <= 25 ? pick(ordinary) : pick(C.wild.rare.filter((id) => !C.legendary.has(id)));
   if (tier === 2) return pick(C.wild.epic);
@@ -765,7 +929,7 @@ export function randomWildDexID(minutes, ownedLegends) {
 const COLORS = { red: ['#F55C47', '#C93B2B'], blue: ['#3DA8F5', '#2970C7'], yellow: ['#FACC2E', '#E0991A'], green: ['#47C77A', '#298F5C'], purple: ['#A661EB', '#7038AD'], pink: ['#EB85C7', '#C44D99'], brown: ['#C78C56', '#8F5D30'], gray: ['#7C8B99', '#4B5663'], black: ['#7C8B99', '#4B5663'], white: ['#8AD6EB', '#58A3BD'] };
 /** Loads every evolution branch of a random wild Pokémon from PokeAPI, like the Mac. */
 export async function fetchWildEncounter(state, minutes) {
-  const dexID = randomWildDexID(minutes, ownedLegendaryIDs(state));
+  const dexID = randomWildDexID(minutes, ownedLegendaryIDs(state), huntHabitat(state)?.types ?? []);
   const tier = C.tiers[tierFor(minutes)];
   const get = async (url) => { const r = await fetch(url); if (!r.ok) throw new Error(`PokeAPI ${r.status}`); return r.json(); };
   const species = await get(`https://pokeapi.co/api/v2/pokemon-species/${dexID}/`);
@@ -886,7 +1050,7 @@ export function completeRound(state, s, now = new Date()) {
     normalizeTeam(state);
   } else {
     const before = describe(partner);
-    partner.experience = capXP(partner.experience + s.minutes + ep.bonus);
+    partner.experience = capXP(partner.experience + ep.base + ep.bonus);
     partner.trainingMinutes += s.minutes; partner.sessions += 1; partner.lastTrainedAt = toSwiftDate(now);
     const after = describe(partner);
     if (after.stage > before.stage) evolutions.push(evolutionEvent(partner, before, after));
@@ -897,7 +1061,7 @@ export function completeRound(state, s, now = new Date()) {
 
   const shared = { amount: 0, recipients: [], evolutions: [] };
   if (state.expShareEnabled) {
-    shared.amount = sharedExperience(wild ? minutes : minutes + ep.bonus);
+    shared.amount = sharedExperience(wild ? minutes * EXP_PER_MINUTE : ep.base + ep.bonus);
     for (const id of state.teamPokemonIDs) {
       const m = findPokemon(state, id);
       if (!m || id === individual.id || levelFor(m.experience) === 100) continue;
@@ -920,6 +1084,9 @@ export function completeRound(state, s, now = new Date()) {
       if (after.stage > before.stage) evolutions.push(evolutionEvent(m, before, after));
     }
   }
+  const chargesBefore = state.undergroundCharges ?? 1;
+  earnUndergroundCharges(state, minutes);
+  const newDig = (state.undergroundCharges ?? 0) > chargesBefore;
   const finishedTrips = [];
   for (const trip of state.expeditions || []) {
     const goal = EXPEDITIONS[trip.kind].goal;
@@ -944,7 +1111,9 @@ export function completeRound(state, s, now = new Date()) {
     if (egg.accumulatedMinutes >= egg.requiredMinutes) { egg.accumulatedMinutes = egg.requiredMinutes; egg.isHatched = true; awardSpecies(state, egg.rewardSpecies); notes.push(`Ei geschlüpft: ${egg.rewardSpecies.displayName}!`); }
   }
   const raidBonus = wild ? 0 : d.raidBonus;
-  const damage = Math.round(minutes * (dragon ? 3 : mega ? 2 : 1) * (1 + raidBonus / 100));
+  const matchup = wild ? 'neutral' : raidMatchup(pokemonTypes(individual), typesOf(activeBoss(state).pokedexID));
+  const damage = Math.round(minutes * (dragon ? 3 : mega ? 2 : 1) * (1 + raidBonus / 100) * MATCHUP[matchup].multiplier);
+  if (matchup !== 'neutral') notes.push(`Raid: ${MATCHUP[matchup].label}`);
   const defeated = damageBoss(state, damage);
   if (defeated) {
     const reward = C.raidBosses.find((b) => b.pokedexID === defeated.pokedexID)?.rewardCoins ?? 100;
@@ -958,7 +1127,7 @@ export function completeRound(state, s, now = new Date()) {
     if (level > slot.affectionLevel) { slot.affectionLevel = level; state.coins += 3; }
   }
   const goalReached = todayMinutes(state, now) >= dailyGoal(state);
-  for (const q of state.dailyQuests || []) recordQuest(q, { minutes, stage: wild ? 1 : d.stage, mega, goalReached });
+  for (const q of state.dailyQuests || []) recordQuest(q, { minutes, stage: wild ? 1 : d.stage, mega, goalReached, types: pokemonTypes(individual) });
 
   unlockBiomes(state);
   refreshBadges(state, now);
@@ -980,23 +1149,34 @@ export function completeRound(state, s, now = new Date()) {
   }
   return {
     wild, minutes, coins, shiny: !!individual.isShiny, captured: wild ? describe(individual) : null, capturedSpecies,
-    partner: d, partnerName: d.name, earned: wild ? 0 : s.minutes + ep.bonus, dayBonus: ep.day || 0, mega,
-    shared, habitatTraining, habitatBonus: ep.habitat || 0, finishedTrips, levelUps, evolutions, notes, newBadges, researchUpdates,
+    partner: d, partnerName: d.name, earned: wild ? 0 : ep.base + ep.bonus, dayBonus: ep.day || 0, mega,
+    individualID: individual.id, shared, habitatTraining, habitatBonus: ep.habitat || 0, newDig, finishedTrips, levelUps, evolutions, notes, newBadges, researchUpdates,
     raidDamage: Math.min(raidHPBefore, damage), trainerLevelUp: trainerAfter > trainerBefore ? trainerAfter : null,
     inPC: boxOf(state, individual.id) >= 0 && wild, breakStarted, chainDone, round: s.round,
   };
 }
 
 export function failRound(state, s, reason, now = new Date()) {
+  const rescue = state.activeBerryBuff === 'himmihbeere' && s.mode === 'owned' && !s.inBreak;
   state.activeBerryBuff = null;
   if (s.inBreak) return { chainEnded: true };
   const partner = findPokemon(state, state.selectedPokemonID);
+  let rescued = null;
+  if (rescue && partner && levelFor(partner.experience) < 100) {
+    const focused = Math.max(0, Math.floor((s.minutes * 60 - secondsLeft(s, now.getTime())) / 60));
+    if (focused > 0) {
+      const before = describe(partner);
+      partner.experience = capXP(partner.experience + focused * EXP_PER_MINUTE);
+      const after = describe(partner);
+      rescued = { name: after.name, ep: focused * EXP_PER_MINUTE, minutes: focused, evolution: after.stage > before.stage ? evolutionEvent(partner, before, after) : null };
+    }
+  }
   const species = s.mode === 'wild' ? (partner?.species ?? C.species[0]) : partner.species;
   const tag = tagFor(state, s);
   state.plantedTrees ||= [];
   state.plantedTrees.unshift({ id: newID(), species, durationMinutes: s.minutes, timestamp: toSwiftDate(now), survived: false, tagName: tag.name, tagColorHex: tag.colorHex,
     note: s.note ? `${s.note} (${reason})` : reason, coinsEarned: 0, isShiny: false, isMega: false, wasWildEncounter: s.mode === 'wild', biomeID: s.biomeID });
-  return { chainEnded: false };
+  return { chainEnded: false, rescued };
 }
 
 // MARK: Stats
@@ -1041,6 +1221,9 @@ export function prepareSave(state) {
   state.levelCurveVersion = 2;
   state.habitatResidents ||= {};
   state.claimedHabitatIDs ||= [];
+  state.undergroundCharges ??= 1;
+  state.undergroundMinuteBank ??= 0;
+  state.undergroundDigCount ??= 0;
   ensureRaids(state);
   refreshQuests(state);
   normalizeTeam(state);

@@ -15,10 +15,12 @@ export const app = {
 
 export const $ = (selector, root = document) => root.querySelector(selector);
 export const esc = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-export const art = (id, shiny) => `${SPRITES}/other/official-artwork/${shiny ? 'shiny/' : ''}${id}.png`;
-export const pixel = (id, shiny) => `${SPRITES}/${shiny ? 'shiny/' : ''}${id}.png`;
+const defaultSprite = (id, shiny) => `${SPRITES}/${shiny ? 'shiny/' : ''}${id}.png`;
+/** Every sprite in the app uses the DS look (see `ds`); forms above #1025 keep the default sprite. */
+export const pixel = (id, shiny) => (id >= 1 && id <= 1025 ? ds(id, shiny) : defaultSprite(id, shiny));
+export const art = pixel;
 /** DS-era sprites for all 1025 Pokémon: Platin #1–493, Schwarz/Weiß style #494–1025; forms use the default sprite. */
-export const ds = (id, shiny) => (id > 1025 ? pixel(id, shiny)
+export const ds = (id, shiny) => (id > 1025 || id < 1 ? defaultSprite(id, shiny)
   : `${SPRITES}/versions/${id <= 493 ? 'generation-iv/platinum' : 'generation-v/black-white'}/${shiny ? 'shiny/' : ''}${id}.png`);
 /** Type badge in the handheld style. */
 export const typeBadge = (n, small) => { const t = G.typeInfo(n); return `<span class="type ${small ? 'small' : ''} ${t.darkText ? 'dark' : ''}" style="--c:${t.colorHex}">${esc(t.name)}</span>`; };
@@ -102,6 +104,21 @@ export function playEvolutions() {
 }
 
 /** Bottom sheet with a Pokémon's details and every action that applies to it. */
+/** The "Trainer-Memo" page of the Diamant/Perl summary. */
+function trainerMemo(p) {
+  const state = app.state;
+  const origin = p.species.elementType === 'Fossil' ? 'Aus einem Fossil im Untergrund wiederbelebt.'
+    : G.legendaryID(p.species) != null ? 'Ein legendärer Begleiter aus Raid oder Ei.'
+    : (state.plantedTrees || []).some((t) => t.wasWildEncounter && t.pokemonID === p.id) ? 'Bei einer wilden Begegnung gefangen.' : 'Dein Trainingspartner aus dem Poké-Shop.';
+  const matchup = G.raidMatchup(G.pokemonTypes(p), G.typesOf(G.activeBoss(state).pokedexID));
+  const fits = G.C.habitats.places.find((h) => G.habitatFits(h, p));
+  const since = G.fromSwiftDate(p.obtainedAt).toLocaleDateString('de-DE', { day: 'numeric', month: 'long', year: 'numeric' });
+  return `<div class="memo"><strong>TRAINER-MEMO</strong>
+    <p>Seit ${since} bei dir. ${origin}</p>
+    <p>${p.trainingMinutes} Fokus-Minuten in ${p.sessions} Runden trainiert.</p>
+    <p>Gegen den Raid-Boss: ${G.MATCHUP[matchup].label}.</p>
+    ${fits ? `<p class="muted">Fühlt sich ${esc(fits.locative)} wohl.</p>` : ''}</div>`;
+}
 export function pokemonSheet(id) {
   const state = app.state;
   const p = G.findPokemon(state, id);
@@ -127,6 +144,7 @@ export function pokemonSheet(id) {
         }).join('')}</div>`
       : `<button class="pill quiet" data-action="to-team" data-id="${id}">Ins Team holen</button>`;
     if (home) actions += `<button class="pill quiet" data-action="habitat-leave" data-id="${id}">Zurück in den PC</button>`;
+    else { const fit = G.suggestedHabitat(state, id); if (fit) actions += `<button class="pill quiet" data-action="habitat-quick" data-id="${id}" data-habitat="${fit.id}">Einziehen lassen: ${esc(fit.name)}</button>`; }
     if ((state.expeditions || []).length < G.MAX_EXPEDITIONS) {
       actions += '<p class="small muted">Auf Expedition schicken:</p>' + Object.entries(G.EXPEDITIONS).map(([key, k]) => `<button class="pill quiet" data-action="expedition" data-id="${id}" data-kind="${key}">${k.icon} ${k.title}: ${k.goal} Min · ${k.coins} Münzen</button>`).join('');
     }
@@ -139,9 +157,10 @@ export function pokemonSheet(id) {
       ${typeBadges(G.pokemonTypes(p))}
       <p class="small">${esc(where)}</p>
       ${bar(d.progress)}
-      <p class="small muted">${d.maxLevel ? 'Level 100 erreicht.' : `Noch ${d.toNextLevel} Fokus-Min bis Lv. ${d.level + 1}.`}${d.nextEvolutionName ? ` Entwicklung zu ${esc(d.nextEvolutionName)} in ${duration(d.toNextEvolution)}.` : ''}</p>
+      <p class="small muted">${d.maxLevel ? 'Level 100 erreicht.' : `Noch ${d.minutesToNextLevel} Fokus-Min bis Lv. ${d.level + 1}.`}${d.nextEvolutionName ? ` Entwicklung zu ${esc(d.nextEvolutionName)} in ${duration(d.minutesToNextEvolution)}.` : ''}</p>
       <p class="small muted">${p.trainingMinutes} Min gemeinsam · ${p.sessions} Trainings · +${d.raidBonus} % Raid-Bonus</p>
     </div></div>
+    ${trainerMemo(p)}
     <form class="row" data-form="rename" data-id="${id}"><input name="nickname" maxlength="24" placeholder="Spitzname" value="${esc(p.nickname)}" aria-label="Spitzname"><button class="pill quiet">Speichern</button></form>
     <div class="actions">${actions}
       ${legend ? '' : `<button class="pill quiet" data-action="adopt" data-species="${esc(p.species.id)}">Weiteres Exemplar · ${G.copyPrice(state, p.species)} Münzen</button>`}

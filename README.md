@@ -3,11 +3,14 @@
 Eine Web-App, die denselben Spielstand wie die Mac-App nutzt. Kein Build-Schritt: reine HTML/CSS/JS-Dateien.
 
 ## Was sie kann (wie die Mac-App)
+- **Pokétch:** der Timer als Uhr aus Diamant/Perl, mit den Apps Fokus-Uhr, Schrittzähler und Pokémon-Liste. 2 EP pro Fokus-Minute.
 - **Training:** eigenes Pokémon (Lv. 1–100, Entwicklungen, Mega) oder wilde Begegnung (#1–#1025, vier Seltenheiten), Ring-Timer 5–180 Min, Pomodoro-Ketten, Ewigstein-Pause, Beeren, Knursp, Fokus-Tags, Notizen, Vorlagen, Runden-Rückblick. Läuft weiter, wenn du die App schließt.
 - **Safari:** 9 Sinnoh-Lebensräume im Stil der Diamant/Perl-Kampfhintergründe (PC-Pokémon mit passendem Typ ziehen ein und trainieren mit), Team & PC (Boxen, Sortieren, Suchen, Tauschen, EP-Teiler), Expeditionen, Statistik (Heute/Woche/Monat/Gesamt, 28-Tage-Karte, Fokus-Tags), Logbuch.
+- **Untergrund:** pro 25 Fokus-Minuten eine Grabung mit Kugeln, Herzschuppen und Fossilien.
+- **Typen:** Jagdgebiete für wilde Begegnungen, Typ-Tagesquest, Raids mit Original-Typtabelle.
 - **Trainer:** 30 Orden, Raids, Tagesquests, Eier, Pension, Forschung mit Regionen, Wochen-Liga mit Rivalen, Pokédex, Profil und Profilbilder.
 - **Shop:** Linien freischalten, Exemplare adoptieren, Beeren, Knursp-Bäckerei, Wunder-Tausch, Profilbild-Kapsel.
-- **Mehr:** PokéRadio mit Atmosphäre-Mixer, Tagesziel, Erscheinungsbild, strenger Modus, Fokus-Tags, Sync.
+- **Mehr:** PokéRadio (ein Player, Senderliste, Atmosphäre-Kacheln), Tagesziel, Erscheinungsbild, strenger Modus, Fokus-Tags, Sync.
 - Offline nutzbar nach dem ersten Öffnen.
 
 Nur am Mac: Apps und Websites sperren (Fokus-Wächter), Mini-HUD, Menüleiste. In der Web-App ersetzt der strenge Modus den Fokus-Wächter: Wer die App länger als 15 Sekunden verlässt, beendet die Runde.

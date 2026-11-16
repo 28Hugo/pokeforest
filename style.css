@@ -487,3 +487,71 @@ select { max-width: 100%; }
 .travel-row { flex-wrap: wrap; }
 .travel-row .small { text-align: left; }
 @media (max-width: 520px) { .travel-row > button { flex-basis: 100%; } }
+
+/* All sprites are pixel art now (DS style). */
+img { image-rendering: pixelated; }
+
+/* Pokétch: the training timer as the watch from Diamant/Perl/Platin */
+.poketch { display: flex; align-items: center; gap: 8px; margin: 6px auto 10px; width: min(100%, 380px); }
+.poketch-body { flex: 1; padding: 14px; border-radius: 30px; background: linear-gradient(#E8505A, #B8303E); border: 3px solid #7A1E2A; box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25), inset 0 3px 0 rgba(255, 255, 255, 0.25); }
+.lcd { display: grid; gap: 8px; padding: 12px; border-radius: 10px; border: 6px solid #3A3A44; background-color: #A8D098;
+  background-image: radial-gradient(#98C088 0.8px, transparent 0.8px); background-size: 4px 4px; color: #2E4A2A; font-family: 'DotGothic16', ui-monospace, monospace; min-height: 150px; }
+.lcd-row { display: flex; justify-content: space-between; gap: 8px; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.lcd-main { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.lcd-digits { font-size: clamp(2.6rem, 13vw, 3.4rem); line-height: 1; letter-spacing: 0.06em; }
+.lcd-unit { font-size: 0.9rem; }
+.lcd-sprite { border: 0; background: none; padding: 0; }
+.lcd-sprite-img { width: 64px; height: 64px; filter: grayscale(1) contrast(1.4) sepia(1) hue-rotate(50deg) saturate(1.6) brightness(0.7); }
+.lcd-ball { width: 52px; height: 52px; border-radius: 50%; border: 5px solid #2E4A2A; background: linear-gradient(#6E9A60 46%, #2E4A2A 46% 54%, #A8D098 54%); position: relative; }
+.lcd-ball::after { content: ''; position: absolute; inset: 50% auto auto 50%; width: 14px; height: 14px; transform: translate(-50%, -50%); border-radius: 50%; background: #A8D098; border: 4px solid #2E4A2A; }
+.lcd-bar { display: grid; grid-template-columns: repeat(20, 1fr); gap: 2px; }
+.lcd-bar i { height: 7px; background: #98C088; }
+.lcd-bar i.on { background: #2E4A2A; }
+.lcd-party { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; text-align: center; font-size: 0.72rem; }
+.lcd-party img { width: 44px; height: 44px; }
+.lcd-party div { display: grid; justify-items: center; gap: 1px; }
+.lcd-party b { display: block; width: 80%; height: 4px; background: #98C088; }
+.lcd-party b i { display: block; height: 100%; background: #2E4A2A; }
+.poketch-side { display: grid; gap: 6px; justify-items: center; }
+.poketch-button { width: 22px; height: 64px; border-radius: 11px; border: 2px solid #7A1E2A; background: linear-gradient(#E8505A, #B8303E); padding: 0; }
+.poketch-dot { width: 6px; height: 6px; border-radius: 50%; background: rgba(0, 0, 0, 0.15); }
+.poketch-dot.on { background: #B8303E; }
+
+/* Trainer-Memo in the Steckbrief */
+.memo { display: grid; gap: 3px; margin: 10px 0; padding: 10px 12px; background: #F8F0D8; color: #3A2A18; border: 3px solid #9A6A38; border-radius: 6px; font-size: 0.85rem; }
+.memo strong { color: #9A6A38; font-size: 0.72rem; letter-spacing: 0.08em; }
+.memo p { margin: 0; }
+
+/* Untergrund */
+.dig-wall { position: relative; display: grid; grid-template-columns: repeat(var(--cols), 1fr); gap: 1px; padding: 4px; background: #3A2614; border-radius: 10px; margin: 8px 0; }
+.dig-cell { aspect-ratio: 1; border: 0; padding: 0; border-radius: 2px; background: #C9A872; }
+.dig-cell.l1 { background: #9A7448; } .dig-cell.l2 { background: #7E5C38; } .dig-cell.l3 { background: #664828; } .dig-cell.l4 { background: #4E361C; }
+.dig-find { position: absolute; display: grid; place-items: center; pointer-events: none; padding: 4px; box-sizing: border-box; }
+.dig-find img { width: 100%; height: 100%; object-fit: contain; filter: grayscale(0.9) sepia(0.5); }
+.dig-find small { position: absolute; bottom: 2px; font-size: 0.6rem; color: #fff; background: rgba(0, 0, 0, 0.55); padding: 0 4px; border-radius: 6px; }
+.dig-find .heart { color: #F27AA2; font-size: 2rem; }
+.dig-find .sphere { width: 80%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #fff, var(--c)); }
+.dig-stability { display: grid; gap: 2px; min-width: 140px; }
+.segmented.small button { padding: 6px 10px; font-size: 0.8rem; }
+
+/* PokéRadio */
+.now-playing { display: grid; gap: 10px; justify-items: center; padding: 16px; border-radius: var(--radius-m); background: var(--surface); border: 1px solid var(--line); }
+.np-video { width: 100%; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; background: linear-gradient(135deg, var(--accent), #1E1B4B); }
+.np-video iframe { width: 100%; height: 100%; border: 0; }
+.np-cover { display: grid; place-items: center; height: 100%; }
+.np-info { display: grid; text-align: center; }
+.np-controls { display: flex; align-items: center; gap: 18px; }
+.np-play { width: 56px; height: 56px; border-radius: 50%; border: 0; background: var(--accent); color: #fff; font-size: 1.3rem; }
+.station-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px; }
+.station-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; border: 1.5px solid transparent; background: var(--surface); color: inherit; text-align: left; }
+.station-row.on { border-color: var(--accent); }
+.station-row span:last-child { display: grid; }
+.station-row small { color: var(--ink-soft); }
+.ambience { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.ambience-tile { display: grid; gap: 6px; }
+.ambience-tile button { display: grid; justify-items: center; gap: 4px; padding: 12px 4px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: inherit; font-weight: 700; font-size: 0.8rem; }
+.ambience-tile button span { font-size: 1.4rem; }
+.ambience-tile.on button { background: var(--forest); color: var(--meadow-soft); }
+.ambience { grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); }
+.ambience-tile { min-width: 0; }
+.ambience-tile input { width: 100%; min-width: 0; }

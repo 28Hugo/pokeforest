@@ -1,6 +1,6 @@
 // Poké-Shop: species lines, berries, Knursp, Wunder-Tausch and avatar capsules.
 import * as G from '../game.js';
-import { app, $, esc, pixel, num, segmented, sub, save, saveMeta, toast, openSheet, closeSheet } from '../ui.js';
+import { app, $, esc, pixel, typeBadges, num, segmented, sub, save, saveMeta, toast, openSheet, closeSheet } from '../ui.js';
 
 export function render(view) {
   view.innerHTML = `<div class="row"><h2>Poké-Shop</h2><span class="muted small">${num(app.state.coins)} Münzen</span></div>
@@ -23,7 +23,7 @@ function renderLines(body) {
       const evo = x.stages.length === 3 ? `Fokus-Entwicklungen: Lv. 16 und 36` : x.stages.length === 2 ? `Fokus-Entwicklung ab Lv. 20` : 'Einzel-Pokémon';
       return `<div class="line-card" style="--accent:${x.primaryHex}">
         <div class="line-sprites">${x.stages.map((st) => `<img src="${pixel(st.pokedexID)}" alt="${esc(st.name)}" title="${esc(st.name)}" loading="lazy">`).join('')}</div>
-        <strong>${esc(x.displayName)}</strong><span class="small muted">${evo}</span>
+        <strong>${esc(G.lineTitle(x))}</strong>${typeBadges(G.typesOf(x.stages[0].pokedexID), true)}<span class="small muted">${evo}</span>
         ${unlocked ? `<div class="row">${own ? `<button class="pill quiet" data-action="partner" data-id="${own.id}" ${app.session ? 'disabled' : ''}>${own.id === s.selectedPokemonID ? 'Aktiv' : 'Trainieren'}</button>` : '<span class="small muted">Kein Exemplar</span>'}
           ${legend ? '' : `<button class="pill quiet" data-action="adopt-line" data-id="${esc(x.id)}" ${s.coins < copy ? 'disabled' : ''}>+ Exemplar · ${copy}</button>`}</div>`
           : legend ? '<span class="small muted">Legendär: nur über Raids, Eier oder Begegnungen</span>'

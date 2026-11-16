@@ -37,19 +37,31 @@ function setChannel(id, volume) {
   ch.gain.gain.setTargetAtTime(volume, ctx.currentTime, 0.2);
   if (ctx.state === 'suspended') ctx.resume();
 }
+const AMBIENCE_ICONS = { rain: '🌧', vinyl: '💿', fire: '🔥', waves: '🌊' };
 function renderRadio(body) {
   const stations = G.C.stations;
-  const current = stations.find((s) => s.id === app.meta.station) ?? stations[0];
+  const index = Math.max(0, stations.findIndex((s) => s.id === app.meta.station));
+  const current = stations[index];
   const mix = app.meta.mix || {};
   body.innerHTML = `
-    <h2>PokéRadio</h2>
-    <div class="player">${app.meta.radioOn ? `<iframe src="https://www.youtube-nocookie.com/embed/${current.youtubeVideoID}?autoplay=1&playsinline=1" title="${esc(current.title)}" allow="autoplay; encrypted-media" allowfullscreen></iframe>`
-      : `<button class="player-cover" data-action="radio-play" style="--accent:${current.accentHex}"><span class="ball-dot big"></span><strong>${esc(current.title)}</strong><span>${esc(current.artist)}</span><span class="pill">Abspielen</span></button>`}</div>
-    <p class="small muted">Musik von den Künstlerkanälen auf YouTube, Internet nötig.</p>
-    <div class="stations">${stations.map((s) => `<button class="station ${s.id === current.id ? 'on' : ''}" data-action="station" data-id="${s.id}" style="--accent:${s.accentHex}"><strong>${esc(s.title)}</strong><small>${esc(s.artist)}</small><small>${esc(s.region)}</small></button>`).join('')}</div>
-    <h3>Atmosphäre</h3>
-    <div class="panel stack">${CHANNELS.map(([id, label]) => `<label class="field">${label}<input type="range" min="0" max="100" value="${Math.round((mix[id] || 0) * 100)}" data-mix="${id}" aria-label="${label}"></label>`).join('')}
-      <p class="small muted">Wird im Browser erzeugt, funktioniert auch offline.</p></div>`;
+    <div class="now-playing" style="--accent:${current.accentHex}">
+      <div class="np-video">${app.meta.radioOn ? `<iframe src="https://www.youtube-nocookie.com/embed/${current.youtubeVideoID}?autoplay=1&playsinline=1" title="${esc(current.title)}" allow="autoplay; encrypted-media" allowfullscreen></iframe>`
+        : '<div class="np-cover"><span class="ball-dot big"></span></div>'}</div>
+      <div class="np-info"><strong>${esc(current.title)}</strong><span class="muted">${esc(current.artist)}</span></div>
+      <div class="np-controls">
+        <button class="icon-btn" data-action="station-step" data-delta="-1" aria-label="Vorheriger Sender">⏮</button>
+        <button class="np-play" data-action="${app.meta.radioOn ? 'radio-stop' : 'radio-play'}" aria-label="${app.meta.radioOn ? 'Stopp' : 'Abspielen'}">${app.meta.radioOn ? '■' : '▶'}</button>
+        <button class="icon-btn" data-action="station-step" data-delta="1" aria-label="Nächster Sender">⏭</button>
+      </div>
+      <p class="small muted">Musik von den Künstlerkanälen auf YouTube, Internet nötig.</p>
+    </div>
+    <h3>Sender</h3>
+    <div class="station-list">${stations.map((s) => `<button class="station-row ${s.id === current.id ? 'on' : ''}" data-action="station" data-id="${s.id}" style="--accent:${s.accentHex}"><span class="dot" style="background:${s.accentHex}"></span><span><strong>${esc(s.title)}</strong><small>${esc(s.artist)}</small></span></button>`).join('')}</div>
+    <h3>Atmosphäre <span class="small muted">tippen zum Ein- und Ausschalten</span></h3>
+    <div class="ambience">${CHANNELS.map(([id, label]) => { const on = (mix[id] || 0) > 0.001;
+      return `<div class="ambience-tile ${on ? 'on' : ''}"><button data-action="ambience" data-id="${id}" aria-pressed="${on}"><span>${AMBIENCE_ICONS[id]}</span>${label}</button>
+        ${on ? `<input type="range" min="2" max="100" value="${Math.round(mix[id] * 100)}" data-mix="${id}" aria-label="Lautstärke ${label}">` : ''}</div>`; }).join('')}</div>
+    <p class="small muted">Die Atmosphäre wird im Browser erzeugt und funktioniert auch offline.</p>`;
   body.querySelectorAll('[data-mix]').forEach((input) => input.addEventListener('input', () => {
     app.meta.mix = { ...(app.meta.mix || {}), [input.dataset.mix]: Number(input.value) / 100 };
     saveMeta(); setChannel(input.dataset.mix, (Number(input.value) / 100) * 0.35);
@@ -135,6 +147,20 @@ export function handle(action, el) {
     case 'fresh': replaceState(G.freshSave()); app.meta.tab = 'train'; saveMeta(); app.render(); return true;
     case 'station': app.meta.station = el.dataset.id; app.meta.radioOn = true; saveMeta(); app.render(); return true;
     case 'radio-play': app.meta.radioOn = true; saveMeta(); app.render(); return true;
+    case 'radio-stop': app.meta.radioOn = false; saveMeta(); app.render(); return true;
+    case 'station-step': {
+      const stations = G.C.stations;
+      const i = Math.max(0, stations.findIndex((s) => s.id === app.meta.station));
+      app.meta.station = stations[(i + Number(el.dataset.delta) + stations.length) % stations.length].id;
+      app.meta.radioOn = true; saveMeta(); app.render(); return true;
+    }
+    case 'ambience': {
+      const id = el.dataset.id; const mix = { ...(app.meta.mix || {}) };
+      const on = (mix[id] || 0) > 0.001;
+      app.meta.lastMix = { ...(app.meta.lastMix || {}), ...(on ? { [id]: mix[id] } : {}) };
+      mix[id] = on ? 0 : (app.meta.lastMix?.[id] || 0.4);
+      app.meta.mix = mix; saveMeta(); setChannel(id, mix[id] * 0.35); app.render(); return true;
+    }
     case 'delete-tag': app.state.tags = app.state.tags.filter((t) => t.id !== el.dataset.id); save(); app.render(); return true;
   }
   return false;

@@ -19,7 +19,7 @@ app.render = function render() {
   $('#goal').innerHTML = s ? `<span style="width:${Math.round(Math.min(1, G.todayMinutes(s) / G.dailyGoal(s)) * 100)}%"></span>` : '';
   $('#goal').title = s ? `Heute ${G.todayMinutes(s)} / ${G.dailyGoal(s)} Min` : '';
   const ready = s ? (s.expeditions || []).filter((t) => t.progressMinutes >= G.EXPEDITIONS[t.kind].goal).length : 0;
-  $('[data-view="safari"]').dataset.badge = ready || '';
+  $('[data-view="safari"]').dataset.badge = (s ? ready + G.habitatFitCount(s) : 0) || '';
   const quests = s ? (s.dailyQuests || []).filter((q) => !q.isClaimed && q.currentValue >= q.targetValue).length : 0;
   $('[data-view="trainer"]').dataset.badge = quests || '';
   const view = $('#view');
