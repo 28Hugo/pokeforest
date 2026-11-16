@@ -1,64 +1,92 @@
-// Safari-Wiese: painted meadow, Team & PC, statistics and logbook.
+// Safari: Sinnoh habitats, Team & PC, statistics and logbook.
 import * as G from '../game.js';
-import { app, $, esc, art, pixel, duration, num, bar, segmented, sub, save, saveMeta, toast, openSheet, closeSheet, pokemonSheet, queueEvolutions, playEvolutions } from '../ui.js';
-import { paint, SIZE } from './painting.js';
-
-const CLEARINGS = [[125, 207], [246, 227], [350, 190], [168, 311], [290, 319], [425, 286], [585, 145], [679, 150], [88, 360], [350, 373], [499, 366], [500, 207]];
-const PER_PAGE = 12;
+import { app, $, esc, art, pixel, ds, typeBadges, duration, num, bar, segmented, sub, save, saveMeta, toast, openSheet, closeSheet, pokemonSheet, queueEvolutions, playEvolutions } from '../ui.js';
 
 export function render(view) {
   const section = sub('safari', 'meadow');
   view.innerHTML = `<div class="row"><h2>Safari</h2><span class="muted small">${app.state.pokemonRoster.length} Begleiter</span></div>
-    ${segmented('safari', [['meadow', 'Wiese'], ['team', 'Team & PC'], ['stats', 'Statistik'], ['log', 'Logbuch']])}
+    ${segmented('safari', [['meadow', 'Lebensräume'], ['team', 'Team & PC'], ['stats', 'Statistik'], ['log', 'Logbuch']])}
     <div id="safari-body"></div>`;
   const body = $('#safari-body', view);
-  ({ meadow: renderMeadow, team: renderTeam, stats: renderStats, log: renderLog })[section](body);
+  ({ meadow: renderHabitats, team: renderTeam, stats: renderStats, log: renderLog })[section](body);
 }
 
-// MARK: Meadow
+// MARK: Lebensräume (Sinnoh habitats with DS battle backdrops)
+const SCENE_W = 256; const SCENE_H = 192;
+function currentHabitat() { return G.habitatByID(app.meta.habitatID) ?? G.C.habitats.places[0]; }
 function biome() { return G.C.biomes.find((b) => b.id === app.state.selectedBiome) ?? G.C.biomes[0]; }
-function residents() {
+const sceneBox = (index) => {
+  const [x, y, , ry] = G.C.habitats.platforms[index];
+  const size = index < 3 ? 64 : 80;
+  const top = y + ry / 2 - size + size / 12;
+  return `left:${((x - size / 2) / SCENE_W) * 100}%;top:${(top / SCENE_H) * 100}%;width:${(size / SCENE_W) * 100}%`;
+};
+function renderHabitats(body) {
   const s = app.state;
-  const team = s.teamPokemonIDs.map((id) => G.findPokemon(s, id)).filter(Boolean);
-  return [...team, ...s.pokemonRoster.filter((p) => !s.teamPokemonIDs.includes(p.id) && !G.onExpedition(s, p.id))];
-}
-function renderMeadow(body) {
-  const s = app.state;
+  const H = G.C.habitats;
+  const h = currentHabitat();
+  const open = G.habitatUnlocked(s, h);
+  const residents = G.residentsOf(s, h);
+  const full = residents.length >= H.capacity;
+  const total = Object.values(s.habitatResidents || {}).reduce((a, ids) => a + ids.length, 0);
+  const fullCount = H.places.filter((x) => G.habitatFull(s, x)).length;
+  const partner = G.findPokemon(s, s.selectedPokemonID);
+  const boosted = G.partnerHabitatBonus(s, { mode: 'owned' });
   const b = biome();
-  const all = residents();
-  const pages = Math.max(1, Math.ceil(all.length / PER_PAGE));
-  const page = Math.min(app.meta.habitat || 0, pages - 1);
-  const list = all.slice(page * PER_PAGE, page * PER_PAGE + PER_PAGE);
-  const hour = new Date().getHours();
-  const theme = s.selectedTimeTheme;
-  const tint = theme?.startsWith('Mitternacht') || (theme?.startsWith('Automatisch') && (hour < 6 || hour >= 20)) ? 'night' : theme?.startsWith('Abendrot') || (theme?.startsWith('Automatisch') && hour >= 17) ? 'sunset' : '';
-  const weather = (s.selectedWeather || '').split(' ')[0].toLowerCase();
   body.innerHTML = `
-    <div class="row"><div><h3>${esc(b.title)}</h3><p class="small muted">${esc(b.region)} · Generation ${b.generation}${s.expeditions?.length ? ` · ${s.expeditions.length} auf Expedition` : ''}</p></div>
-      <button class="pill quiet" data-action="biomes">Gebiet wechseln</button></div>
-    <div class="meadow-wrap">
-      <canvas id="meadow" width="${SIZE.W * 2}" height="${SIZE.H * 2}" aria-hidden="true"></canvas>
-      <div class="sky-tint ${tint}"></div><div class="weather ${weather}"></div>
-      <div class="sign">Safari-Park<br><small>Gebiet ${page + 1} · ${list.length} Bewohner</small></div>
-      ${list.map((p, i) => { const d = G.describe(p); const [x, y] = CLEARINGS[i];
-        return `<button class="resident" style="left:${(x / SIZE.W) * 100}%;top:${(y / SIZE.H) * 100}%;--delay:${(i * 0.7).toFixed(1)}s" data-action="inspect" data-id="${p.id}" aria-label="${esc(d.name)}, Level ${d.level}">
-          <img src="${pixel(d.spriteID, p.isShiny)}" alt="" loading="lazy">${p.id === s.selectedPokemonID ? `<span class="tag">★ ${esc(d.name)}</span>` : ''}${s.teamPokemonIDs.includes(p.id) ? '<span class="ball-dot"></span>' : ''}</button>`; }).join('')}
-    </div>
-    <div class="row">
-      <button class="icon-btn" data-action="habitat" data-delta="-1" ${page === 0 ? 'disabled' : ''} aria-label="Vorheriger Lebensraum">‹</button>
-      <span class="small muted">Lebensraum ${page + 1} von ${pages}</span>
-      <button class="icon-btn" data-action="habitat" data-delta="1" ${page >= pages - 1 ? 'disabled' : ''} aria-label="Nächster Lebensraum">›</button>
+    <p class="small muted">Lass PC-Pokémon an Orten wohnen, die zu ihrem Typ passen. Sie trainieren bei jeder Runde mit. · ${total} Bewohner · ${fullCount}/${H.places.length} voll</p>
+    <div class="habitat-chips" role="tablist" aria-label="Lebensräume">${H.places.map((x) => { const ok = G.habitatUnlocked(s, x); const n = G.residentIDs(s, x).length;
+      return `<button role="tab" class="habitat-chip ${x.id === h.id ? 'on' : ''} ${ok ? '' : 'locked'}" aria-selected="${x.id === h.id}" data-action="habitat-pick" data-id="${x.id}">
+        <img src="img/habitats/${x.id}.png" alt=""><span><strong>${esc(x.name)}</strong><small>${ok ? `${n}/${H.capacity}${n >= H.capacity ? ' ★' : ''}` : `ab ${num(x.requiredMinutes)} Min 🔒`}</small>
+        <i>${x.types.map((t) => `<b style="background:${G.typeInfo(t).colorHex}"></b>`).join('')}</i></span></button>`; }).join('')}</div>
+    <div class="habitat-scene ${open ? '' : 'locked'}">
+      <img class="backdrop" src="img/habitats/${h.id}.png" alt="">
+      <div class="place-sign"><strong>${esc(h.name)}</strong><small>${esc(h.place)}</small></div>
+      ${H.platforms.map((_, i) => { const p = residents[i];
+        if (p) { const d = G.describe(p); return `<button class="habitat-mon" style="${sceneBox(i)}" data-action="inspect" data-id="${p.id}" aria-label="${esc(d.name)}, Level ${d.level}"><img src="${ds(d.spriteID, p.isShiny)}" alt=""></button>`; }
+        if (!open) return '';
+        const [x, y] = H.platforms[i];
+        return `<button class="habitat-free" style="left:${(x / SCENE_W) * 100}%;top:${((y - 2) / SCENE_H) * 100}%" data-action="habitat-add" aria-label="Freier Platz: Pokémon einziehen lassen">+</button>`; }).join('')}
+      ${open ? '' : `<div class="habitat-lock"><strong>🔒 Ab ${num(h.requiredMinutes)} Fokus-Minuten</strong><small>Du hast ${num(G.totalMinutes(s))} Minuten.</small></div>`}
     </div>
     <div class="panel stack">
-      <label class="field">Wetter <select data-action="weather">${G.C.weathers.map((w) => `<option ${w === s.selectedWeather ? 'selected' : ''}>${esc(w)}</option>`).join('')}</select></label>
-      <label class="field">Tageszeit <select data-action="time">${G.C.timeThemes.map((t) => `<option ${t === s.selectedTimeTheme ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
-      <p class="small muted">Tippe ein Pokémon an für Steckbrief und Aktionen. Dein Team steht vorne.</p>
-    </div>`;
-  paint($('#meadow', body), b, page + 1);
+      <p>${esc(h.flavor)}</p>
+      ${typeBadges(h.types)}
+      <div class="row small"><strong>Bewohner</strong><span>${residents.length} / ${H.capacity}</span></div>
+      ${bar(residents.length / H.capacity, full ? 'var(--sun)' : null)}
+      <ul class="bonus-list small">
+        <li>🚶 Bewohner bekommen ${H.residentSharePercent} % deiner Fokus-Minuten als EP.</li>
+        <li class="${full ? 'note-sun' : ''}">${full ? '★' : '☆'} ${full ? `Voll: Partner vom Typ ${h.types.map((t) => G.typeInfo(t).name).join(' oder ')} bekommen +${H.fullHabitatBonusPercent} % EP.` : `Wenn voll: Partner vom passenden Typ bekommen +${H.fullHabitatBonusPercent} % EP.`}</li>
+        ${(s.claimedHabitatIDs || []).includes(h.id) ? '' : `<li>🎁 Beim ersten Mal voll: +${H.firstFillReward} PokéMünzen</li>`}
+        ${partner && boosted?.id === h.id ? `<li class="note-share">✓ ${esc(G.describe(partner).name)} profitiert gerade davon.</li>` : ''}
+      </ul>
+      <button class="pill" data-action="habitat-add" ${!open || full ? 'disabled' : ''}>Pokémon einziehen lassen</button>
+    </div>
+    ${residents.length ? `<div class="stack">${residents.map((p) => { const d = G.describe(p);
+      return `<div class="panel resident-row"><img src="${ds(d.spriteID, p.isShiny)}" alt="">
+        <div><strong>${esc(d.name)}</strong> <span class="small muted">Lv. ${d.level}</span>${typeBadges(G.pokemonTypes(p), true)}</div>
+        <button class="pill quiet" data-action="inspect" data-id="${p.id}">Steckbrief</button>
+        <button class="icon-btn small" data-action="habitat-leave" data-id="${p.id}" aria-label="${esc(d.name)} zurück in den PC">↩</button></div>`; }).join('')}</div>` : ''}
+    <div class="panel row travel-row"><img src="${pixel(b.mascotID)}" alt=""><div><strong>Reiseziel für wilde Begegnungen</strong><p class="small muted">${esc(b.title)} · ${esc(b.region)}</p></div>
+      <button class="pill quiet" data-action="biomes">Gebiet wechseln</button></div>`;
+}
+function habitatPicker() {
+  const s = app.state;
+  const h = currentHabitat();
+  const list = G.habitatCandidates(s, h);
+  openSheet(`<h2>Wer zieht ${esc(h.locative)} ein?</h2>
+    <p class="small muted">Passende Typen: ${typeBadges(h.types, true)}</p>
+    ${list.length ? `<div class="stack">${list.map((p) => { const d = G.describe(p); const home = G.habitatOf(s, p.id);
+      return `<div class="panel resident-row"><img src="${ds(d.spriteID, p.isShiny)}" alt="">
+        <div><strong>${esc(d.name)}</strong> <span class="small muted">Lv. ${d.level}</span>${typeBadges(G.pokemonTypes(p), true)}${home ? `<small class="muted">wohnt ${esc(home.locative)}</small>` : ''}</div>
+        <button class="pill" data-action="habitat-place" data-id="${p.id}">${home ? 'Umziehen' : 'Einziehen'}</button></div>`; }).join('')}</div>`
+      : `<p class="muted">Kein passendes Pokémon im PC. Team-Mitglieder und Pokémon auf Expedition können nicht einziehen. Fange wilde Pokémon vom Typ ${h.types.map((t) => G.typeInfo(t).name).join(', ')}.</p>`}
+    <button class="pill quiet" data-action="close">Fertig</button>`);
 }
 function biomeSheet() {
   const s = app.state;
   openSheet(`<h2>Gebiet wechseln</h2>
+    <p class="small muted">Bestimmt, wo deine wilden Begegnungen stattfinden.</p>
     <div class="biome-list">${G.C.biomes.map((b) => { const open = G.biomeUnlocked(s, b);
       return `<button class="biome ${b.id === s.selectedBiome ? 'on' : ''}" data-action="select-biome" data-id="${esc(b.id)}" ${open ? '' : 'disabled'} style="--accent:${b.accentHex}">
         <img src="${pixel(b.mascotID)}" alt=""><span><strong>${esc(b.title)}</strong><small>${esc(b.region)} · ${open ? 'freigeschaltet' : esc(b.unlock)}</small></span></button>`; }).join('')}</div>
@@ -187,7 +215,16 @@ export function handle(action, el) {
   switch (action) {
     case 'biomes': biomeSheet(); return true;
     case 'select-biome': s.selectedBiome = el.dataset.id; return done(true);
-    case 'habitat': meta.habitat = Math.max(0, (meta.habitat || 0) + Number(el.dataset.delta)); saveMeta(); app.render(); return true;
+    case 'habitat-pick': meta.habitatID = el.dataset.id; saveMeta(); app.render(); return true;
+    case 'habitat-add': habitatPicker(); return true;
+    case 'habitat-place': {
+      const message = G.placeInHabitat(s, el.dataset.id, currentHabitat());
+      if (!message) { toast('Das geht gerade nicht.'); return true; }
+      save(); toast(message);
+      if (G.habitatFull(s, currentHabitat())) { closeSheet(); app.render(); } else { app.render(); habitatPicker(); }
+      return true;
+    }
+    case 'habitat-leave': { const p = G.findPokemon(s, el.dataset.id); G.removeFromHabitat(s, el.dataset.id); return done(true, `${G.describe(p).name} ist zurück im PC.`); }
     case 'box': meta.boxIndex = Math.max(0, Math.min(s.pcBoxes.length - 1, meta.boxIndex + Number(el.dataset.delta))); saveMeta(); app.render(); return true;
     case 'goto-box': meta.boxIndex = Number(el.dataset.index); saveMeta(); app.render(); return true;
     case 'add-box': s.pcBoxes.push({ id: G.newID(), name: `Box ${s.pcBoxes.length + 1}`, pokemonIDs: [] }); meta.boxIndex = s.pcBoxes.length - 1; return done(true);
@@ -205,8 +242,6 @@ export function handle(action, el) {
 export function change(el) {
   const s = app.state; const meta = app.meta;
   switch (el.dataset.action) {
-    case 'weather': s.selectedWeather = el.value; save(); app.render(); return true;
-    case 'time': s.selectedTimeTheme = el.value; save(); app.render(); return true;
     case 'preview': s.safariPreviewEnabled = el.checked; if (!G.biomeUnlocked(s, G.C.biomes.find((b) => b.id === s.selectedBiome))) s.selectedBiome = G.C.biomes[0].id; save(); closeSheet(); app.render(); return true;
     case 'sort-box': if (el.value) { G.sortBox(s, meta.boxIndex, el.value); save(); app.render(); } return true;
     case 'log-shiny': meta.logShiny = el.checked; saveMeta(); app.render(); return true;

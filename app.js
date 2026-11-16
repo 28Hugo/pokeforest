@@ -26,7 +26,7 @@ app.render = function render() {
   if (!s) { renderWelcome(view); return; }
   VIEWS[tab].render(view);
   // Keep the chosen section visible in scrollable section bars.
-  view.querySelectorAll('.segmented [aria-selected="true"]').forEach((b) => {
+  view.querySelectorAll('.segmented [aria-selected="true"], .habitat-chips [aria-selected="true"]').forEach((b) => {
     const bar = b.parentElement;
     if (bar.scrollWidth > bar.clientWidth) bar.scrollLeft += b.getBoundingClientRect().left - bar.getBoundingClientRect().left - (bar.clientWidth - b.offsetWidth) / 2;
   });

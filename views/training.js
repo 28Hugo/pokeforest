@@ -94,6 +94,7 @@ export function render(view) {
             <p class="small muted">${d.maxLevel ? 'Level 100 · Fokus-Champion' : `Diese Runde +${gain} EP → Lv. ${projected.level}. Noch ${d.toNextLevel} Fokus-Min bis Lv. ${d.level + 1}.`}</p>
             ${d.nextEvolutionName ? `<p class="small ${d.toNextEvolution <= gain ? 'note-sun' : 'muted'}">${d.toNextEvolution <= gain ? `Diese Runde entwickelt es sich zu ${esc(d.nextEvolutionName)}!` : `Entwicklung zu ${esc(d.nextEvolutionName)} in ${duration(d.toNextEvolution)} Fokus`}</p>` : ''}
             ${ep.day ? `<p class="small note-sun">Pokémon des Tages: +${G.DAY_BONUS_PERCENT} % EP</p>` : ''}
+            ${ep.habitat ? `<p class="small note-sun">Voller Lebensraum (${esc(G.partnerHabitatBonus(state, { mode: 'owned' })?.name ?? '')}): +${G.C.habitats.fullHabitatBonusPercent} % EP</p>` : ''}
             ${state.activeBerryBuff === 'epbeere' ? '<p class="small note-share">EP-Beere: doppelte EP</p>' : ''}
           </div></div>
           ${star && !running ? `<button class="pill quiet wide" data-action="partner" data-id="${star.id}">Heute in Topform: ${esc(G.describe(star).name)} wählen</button>` : ''}
@@ -223,6 +224,8 @@ export function showRecap(r = app.meta.lastResult) {
     r.wild ? `<li><strong>${esc(r.captured.formName)}</strong> gefangen${r.inPC ? ', wartet im PC' : ''}</li>` : `<li><strong>+${r.earned} EP</strong> für ${esc(r.partnerName)}${r.dayBonus ? ` (davon ${r.dayBonus} als Pokémon des Tages)` : ''}</li>`,
     `<li>+${r.coins} Münzen · ${r.raidDamage} Raid-Schaden${r.mega ? ' · Mega-Runde' : ''}</li>`,
     r.shared.recipients.length ? `<li class="note-share">EP-Teiler: +${r.shared.amount} EP für ${r.shared.recipients.map(esc).join(', ')}</li>` : '',
+    r.habitatTraining?.residents.length ? `<li class="note-share">Lebensräume: +${r.habitatTraining.amount} EP für ${r.habitatTraining.residents.length === 1 ? esc(r.habitatTraining.residents[0]) : `${r.habitatTraining.residents.length} Bewohner`}</li>` : '',
+    r.habitatBonus ? `<li class="note-sun">Voller Lebensraum: +${r.habitatBonus} EP extra</li>` : '',
     ...r.levelUps.map((l) => `<li>${esc(l.name)}: Lv. ${l.from} → ${l.to}</li>`),
     r.trainerLevelUp ? `<li class="note-sun">Trainer-Level ${r.trainerLevelUp}!</li>` : '',
     ...r.notes.map((n) => `<li>${esc(n)}</li>`),

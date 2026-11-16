@@ -243,6 +243,7 @@ export function normalizeTeam(state) {
   state.pcBoxes = boxes;
   state.expeditions = (state.expeditions || []).filter((t) => valid.has(t.pokemonID) && !team.includes(t.pokemonID));
   if (!team.includes(state.selectedPokemonID)) state.selectedPokemonID = team[0] ?? null;
+  normalizeHabitats(state);
   return state;
 }
 export const findPokemon = (state, id) => state.pokemonRoster.find((p) => p.id === id);
@@ -253,6 +254,7 @@ export function addToTeam(state, id) {
   const box = boxOf(state, id);
   if (box >= 0) state.pcBoxes[box].pokemonIDs = state.pcBoxes[box].pokemonIDs.filter((x) => x !== id);
   state.teamPokemonIDs.push(id);
+  normalizeHabitats(state);
   return true;
 }
 export function moveToPC(state, id, running = false) {
@@ -272,6 +274,7 @@ export function swapIntoTeam(state, boxedID, memberID) {
   state.teamPokemonIDs[slot] = boxedID;
   state.pcBoxes[box].pokemonIDs[boxSlot] = memberID;
   if (state.selectedPokemonID === memberID) state.selectedPokemonID = boxedID;
+  normalizeHabitats(state);
   return true;
 }
 export function choosePartner(state, id) {
@@ -279,10 +282,20 @@ export function choosePartner(state, id) {
   if (!state.teamPokemonIDs.includes(id) && !addToTeam(state, id) && !swapIntoTeam(state, id, state.selectedPokemonID ?? state.teamPokemonIDs.at(-1))) return false;
   state.selectedPokemonID = id;
   const p = findPokemon(state, id);
-  state.preferences ||= {};
+  completePreferences(state);
   state.preferences.pokemonID = id;
   state.preferences.speciesID = canonical(state, p.species).id;
   return true;
+}
+/** The Mac needs every TrainingPreferences field, so a web-only save gets the Mac's defaults. */
+export function completePreferences(state) {
+  const partner = findPokemon(state, state.selectedPokemonID);
+  state.preferences = {
+    duration: 25, speciesID: partner ? canonical(state, partner.species).id : 'oak', tagID: state.tags?.[0]?.id ?? newID(),
+    mode: 'Eigenes Pokémon trainieren', pomodoro: false, guardian: 'Standard-Trainer (10s Warnzeit)', strict: false, autoplay: false,
+    ...(state.preferences || {}),
+  };
+  return state;
 }
 export function sortBox(state, index, order) {
   const box = state.pcBoxes[index];
@@ -307,6 +320,79 @@ export function releasePokemon(state, id, running) {
 }
 export const isNew = (p, now = new Date()) => now.getTime() - fromSwiftDate(p.obtainedAt).getTime() < 86400000;
 
+// MARK: Types (PokemonType, original types of #1–#1025)
+let typeForms = null;
+const decodeTypes = (code) => [...code].map((c) => c.charCodeAt(0) - 96).filter((n) => n >= 1 && n <= 18);
+/** Type numbers (1 = Normal … 18 = Fee) by Pokédex or PokeAPI form id. */
+export function typesOf(dexID) {
+  const T = C.types;
+  if (dexID >= 1 && dexID <= T.maxDex) return decodeTypes(T.encoded.slice((dexID - 1) * 2, dexID * 2));
+  typeForms ||= Object.fromEntries(T.forms.split(';').map((e) => e.split(':')).map(([id, code]) => [Number(id), code]));
+  return typeForms[dexID] ? decodeTypes(typeForms[dexID]) : [];
+}
+export const typeInfo = (n) => C.types.names[n - 1];
+export const pokemonTypes = (p) => typesOf(describe(p).spriteID);
+
+// MARK: Lebensräume (PokemonHabitat, HabitatRules)
+export const habitatByID = (id) => C.habitats.places.find((h) => h.id === id);
+export const habitatUnlocked = (state, h) => totalMinutes(state) >= h.requiredMinutes;
+export const habitatFits = (h, p) => pokemonTypes(p).some((t) => h.types.includes(t));
+export const residentIDs = (state, h) => state.habitatResidents?.[h.id] || [];
+export const residentsOf = (state, h) => residentIDs(state, h).map((id) => findPokemon(state, id)).filter(Boolean);
+export const habitatFull = (state, h) => residentIDs(state, h).length >= C.habitats.capacity;
+export const habitatOf = (state, id) => C.habitats.places.find((h) => residentIDs(state, h).includes(id)) ?? null;
+export const residentExperience = (minutes) => (minutes > 0 ? Math.max(1, Math.floor((minutes * C.habitats.residentSharePercent) / 100)) : 0);
+export function normalizeHabitats(state) {
+  const team = new Set(state.teamPokemonIDs || []);
+  const travelling = new Set((state.expeditions || []).map((t) => t.pokemonID));
+  const seen = new Set();
+  const result = {};
+  for (const h of C.habitats.places) {
+    const ids = (state.habitatResidents?.[h.id] || []).filter((id) => {
+      const p = findPokemon(state, id);
+      if (!p || team.has(id) || travelling.has(id) || seen.has(id) || !habitatFits(h, p)) return false;
+      seen.add(id); return true;
+    }).slice(0, C.habitats.capacity);
+    if (ids.length) result[h.id] = ids;
+  }
+  state.habitatResidents = result;
+  return state;
+}
+/** PC Pokémon that could move in (also those living elsewhere), strongest first. */
+export function habitatCandidates(state, h) {
+  const here = new Set(residentIDs(state, h));
+  return state.pokemonRoster.filter((p) => !state.teamPokemonIDs.includes(p.id) && !onExpedition(state, p.id) && !here.has(p.id) && habitatFits(h, p))
+    .sort((a, b) => b.experience - a.experience || describe(a).name.localeCompare(describe(b).name, 'de'));
+}
+/** Moves a PC Pokémon in. Returns a message, or null when it is not possible. */
+export function placeInHabitat(state, id, h) {
+  const p = findPokemon(state, id);
+  if (!p || !habitatUnlocked(state, h) || state.teamPokemonIDs.includes(id) || onExpedition(state, id) || !habitatFits(h, p)
+    || habitatFull(state, h) || residentIDs(state, h).includes(id)) return null;
+  const residents = {};
+  for (const [key, ids] of Object.entries(state.habitatResidents || {})) { const rest = ids.filter((x) => x !== id); if (rest.length) residents[key] = rest; }
+  residents[h.id] = [...(residents[h.id] || []), id];
+  state.habitatResidents = residents;
+  state.claimedHabitatIDs ||= [];
+  if (habitatFull(state, h) && !state.claimedHabitatIDs.includes(h.id)) {
+    state.claimedHabitatIDs.push(h.id); state.claimedHabitatIDs.sort();
+    state.coins += C.habitats.firstFillReward;
+    return `${h.name} ist voll! +${C.habitats.firstFillReward} PokéMünzen. Partner vom Typ ${h.types.map((t) => typeInfo(t).name).join(', ')} bekommen jetzt +${C.habitats.fullHabitatBonusPercent} % EP.`;
+  }
+  return `${describe(p).name} lebt jetzt ${h.locative}.`;
+}
+export function removeFromHabitat(state, id) {
+  const residents = {};
+  for (const [key, ids] of Object.entries(state.habitatResidents || {})) { const rest = ids.filter((x) => x !== id); if (rest.length) residents[key] = rest; }
+  state.habitatResidents = residents;
+}
+/** The full habitat that boosts the partner this round, if any. */
+export function partnerHabitatBonus(state, s) {
+  if (s.mode !== 'owned') return null;
+  const p = findPokemon(state, state.selectedPokemonID);
+  return p ? C.habitats.places.find((h) => habitatFull(state, h) && habitatFits(h, p)) ?? null : null;
+}
+
 // MARK: Expeditions
 export const EXPEDITIONS = {
   meadow: { title: 'Beerenwiese', goal: 60, coins: 5, berries: ['sananabeere'], icon: '🍓' },
@@ -318,6 +404,7 @@ export function startExpedition(state, id, kind) {
   state.expeditions ||= [];
   if (state.expeditions.length >= MAX_EXPEDITIONS || state.teamPokemonIDs.includes(id) || onExpedition(state, id) || !findPokemon(state, id)) return false;
   state.expeditions.push({ id: newID(), pokemonID: id, kind, progressMinutes: 0, startedAt: toSwiftDate() });
+  normalizeHabitats(state);
   return true;
 }
 export function recallExpedition(state, tripID) { state.expeditions = (state.expeditions || []).filter((t) => t.id !== tripID); }
@@ -657,7 +744,8 @@ export function partnerEP(state, s) {
   const pomodoroBonus = s.pomodoro ? s.minutes + (s.round === s.pomodoro.rounds ? planCompletionXP(s.pomodoro) : 0) : 0;
   const berry = state.activeBerryBuff === 'epbeere' ? s.minutes : 0;
   const day = pokemonOfTheDay(state.pokemonRoster) === p.id ? Math.floor((s.minutes * DAY_BONUS_PERCENT) / 100) : 0;
-  return { base: s.minutes, bonus: pomodoroBonus + berry + day, day };
+  const habitat = partnerHabitatBonus(state, s) ? Math.floor((s.minutes * C.habitats.fullHabitatBonusPercent) / 100) : 0;
+  return { base: s.minutes, bonus: pomodoroBonus + berry + day + habitat, day, habitat };
 }
 export function coinPreview(state, s) {
   return trainingCoins(s.minutes, { mega: s.minutes >= 90, berry: state.activeBerryBuff === 'sananabeere', goldPoffin: s.poffin === 'gold', pomodoro: !!s.pomodoro });
@@ -820,6 +908,18 @@ export function completeRound(state, s, now = new Date()) {
       if (after.stage > before.stage) { evolutions.push(evolutionEvent(m, before, after)); shared.evolutions.push(`${before.formName} → ${after.formName}`); }
     }
   }
+  const habitatTraining = { amount: residentExperience(minutes), residents: [] };
+  for (const h of C.habitats.places) {
+    for (const id of state.habitatResidents?.[h.id] || []) {
+      const m = findPokemon(state, id);
+      if (!m || levelFor(m.experience) === 100) continue;
+      const before = describe(m);
+      m.experience = capXP(m.experience + habitatTraining.amount);
+      const after = describe(m);
+      habitatTraining.residents.push(after.name);
+      if (after.stage > before.stage) evolutions.push(evolutionEvent(m, before, after));
+    }
+  }
   const finishedTrips = [];
   for (const trip of state.expeditions || []) {
     const goal = EXPEDITIONS[trip.kind].goal;
@@ -881,7 +981,7 @@ export function completeRound(state, s, now = new Date()) {
   return {
     wild, minutes, coins, shiny: !!individual.isShiny, captured: wild ? describe(individual) : null, capturedSpecies,
     partner: d, partnerName: d.name, earned: wild ? 0 : s.minutes + ep.bonus, dayBonus: ep.day || 0, mega,
-    shared, finishedTrips, levelUps, evolutions, notes, newBadges, researchUpdates,
+    shared, habitatTraining, habitatBonus: ep.habitat || 0, finishedTrips, levelUps, evolutions, notes, newBadges, researchUpdates,
     raidDamage: Math.min(raidHPBefore, damage), trainerLevelUp: trainerAfter > trainerBefore ? trainerAfter : null,
     inPC: boxOf(state, individual.id) >= 0 && wild, breakStarted, chainDone, round: s.round,
   };
@@ -939,9 +1039,12 @@ export function prepareSave(state) {
   state.selectedWeather ||= C.weathers[0];
   state.selectedTimeTheme ||= C.timeThemes[0];
   state.levelCurveVersion = 2;
+  state.habitatResidents ||= {};
+  state.claimedHabitatIDs ||= [];
   ensureRaids(state);
   refreshQuests(state);
   normalizeTeam(state);
+  completePreferences(state);
   return state;
 }
 export function freshSave() {

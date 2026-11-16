@@ -4,7 +4,7 @@ Eine Web-App, die denselben Spielstand wie die Mac-App nutzt. Kein Build-Schritt
 
 ## Was sie kann (wie die Mac-App)
 - **Training:** eigenes Pokémon (Lv. 1–100, Entwicklungen, Mega) oder wilde Begegnung (#1–#1025, vier Seltenheiten), Ring-Timer 5–180 Min, Pomodoro-Ketten, Ewigstein-Pause, Beeren, Knursp, Fokus-Tags, Notizen, Vorlagen, Runden-Rückblick. Läuft weiter, wenn du die App schließt.
-- **Safari:** gemalte Wiese pro Gebiet mit Wetter und Tageszeit, Team & PC (Boxen, Sortieren, Suchen, Tauschen, EP-Teiler), Expeditionen, Statistik (Heute/Woche/Monat/Gesamt, 28-Tage-Karte, Fokus-Tags), Logbuch.
+- **Safari:** 9 Sinnoh-Lebensräume im Stil der Diamant/Perl-Kampfhintergründe (PC-Pokémon mit passendem Typ ziehen ein und trainieren mit), Team & PC (Boxen, Sortieren, Suchen, Tauschen, EP-Teiler), Expeditionen, Statistik (Heute/Woche/Monat/Gesamt, 28-Tage-Karte, Fokus-Tags), Logbuch.
 - **Trainer:** 30 Orden, Raids, Tagesquests, Eier, Pension, Forschung mit Regionen, Wochen-Liga mit Rivalen, Pokédex, Profil und Profilbilder.
 - **Shop:** Linien freischalten, Exemplare adoptieren, Beeren, Knursp-Bäckerei, Wunder-Tausch, Profilbild-Kapsel.
 - **Mehr:** PokéRadio mit Atmosphäre-Mixer, Tagesziel, Erscheinungsbild, strenger Modus, Fokus-Tags, Sync.
@@ -22,7 +22,7 @@ Es zählt der zuletzt geladene Stand. Nicht gleichzeitig auf beiden Geräten tra
 
 ## Lokal testen
 ```bash
-python3 -m http.server 8765 --directory web
+python3 scripts/dev_server.py
 ```
 Dann http://localhost:8765 öffnen.
 

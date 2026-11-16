@@ -17,6 +17,12 @@ export const $ = (selector, root = document) => root.querySelector(selector);
 export const esc = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export const art = (id, shiny) => `${SPRITES}/other/official-artwork/${shiny ? 'shiny/' : ''}${id}.png`;
 export const pixel = (id, shiny) => `${SPRITES}/${shiny ? 'shiny/' : ''}${id}.png`;
+/** DS-era sprites for all 1025 Pokémon: Platin #1–493, Schwarz/Weiß style #494–1025; forms use the default sprite. */
+export const ds = (id, shiny) => (id > 1025 ? pixel(id, shiny)
+  : `${SPRITES}/versions/${id <= 493 ? 'generation-iv/platinum' : 'generation-v/black-white'}/${shiny ? 'shiny/' : ''}${id}.png`);
+/** Type badge in the handheld style. */
+export const typeBadge = (n, small) => { const t = G.typeInfo(n); return `<span class="type ${small ? 'small' : ''} ${t.darkText ? 'dark' : ''}" style="--c:${t.colorHex}">${esc(t.name)}</span>`; };
+export const typeBadges = (list, small) => `<span class="types">${list.map((n) => typeBadge(n, small)).join('')}</span>`;
 export const duration = (m) => (m < 60 ? `${m} Min` : `${Math.floor(m / 60)} Std${m % 60 ? ` ${m % 60} Min` : ''}`);
 export const num = (n) => Number(n).toLocaleString('de-DE');
 export const bar = (fraction, color) => `<div class="bar"><span style="width:${Math.round(Math.max(0, Math.min(1, fraction)) * 100)}%${color ? `;background:${color}` : ''}"></span></div>`;
@@ -105,7 +111,9 @@ export function pokemonSheet(id) {
   const inTeam = state.teamPokemonIDs.includes(id);
   const trip = (state.expeditions || []).find((t) => t.pokemonID === id);
   const teamFull = state.teamPokemonIDs.length >= G.TEAM_SIZE;
+  const home = G.habitatOf(state, id);
   const where = inTeam ? (id === state.selectedPokemonID ? 'Trainingspartner im Team' : 'Im Team')
+    : home ? `Wohnt ${home.locative}`
     : trip ? `Auf Expedition: ${G.EXPEDITIONS[trip.kind].title} (${trip.progressMinutes}/${G.EXPEDITIONS[trip.kind].goal} Min)` : `Im PC, ${state.pcBoxes[G.boxOf(state, id)]?.name ?? ''}`;
   let actions = '';
   if (!trip && id !== state.selectedPokemonID) actions += `<button class="pill" data-action="partner" data-id="${id}" ${running ? 'disabled' : ''}>Als Trainingspartner wählen</button>`;
@@ -118,6 +126,7 @@ export function pokemonSheet(id) {
           return `<button data-action="swap" data-id="${id}" data-with="${m}" aria-label="Tauschen mit ${esc(md.name)}"><img src="${pixel(md.spriteID)}" alt=""><span>Lv.${md.level}</span></button>`;
         }).join('')}</div>`
       : `<button class="pill quiet" data-action="to-team" data-id="${id}">Ins Team holen</button>`;
+    if (home) actions += `<button class="pill quiet" data-action="habitat-leave" data-id="${id}">Zurück in den PC</button>`;
     if ((state.expeditions || []).length < G.MAX_EXPEDITIONS) {
       actions += '<p class="small muted">Auf Expedition schicken:</p>' + Object.entries(G.EXPEDITIONS).map(([key, k]) => `<button class="pill quiet" data-action="expedition" data-id="${id}" data-kind="${key}">${k.icon} ${k.title}: ${k.goal} Min · ${k.coins} Münzen</button>`).join('');
     }
@@ -127,6 +136,7 @@ export function pokemonSheet(id) {
     <div class="sheet-head"><img src="${art(d.spriteID, p.isShiny)}" alt=""><div>
       <h2>${esc(d.name)}${p.isShiny ? ' <span class="note-sun">✦</span>' : ''}</h2>
       <p class="muted">Lv. ${d.level} · ${esc(p.species.displayName)} · #${d.spriteID}</p>
+      ${typeBadges(G.pokemonTypes(p))}
       <p class="small">${esc(where)}</p>
       ${bar(d.progress)}
       <p class="small muted">${d.maxLevel ? 'Level 100 erreicht.' : `Noch ${d.toNextLevel} Fokus-Min bis Lv. ${d.level + 1}.`}${d.nextEvolutionName ? ` Entwicklung zu ${esc(d.nextEvolutionName)} in ${duration(d.toNextEvolution)}.` : ''}</p>
