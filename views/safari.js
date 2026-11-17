@@ -35,7 +35,11 @@ function renderHabitats(body) {
   const outbreak = G.massOutbreak();
   const dex = G.habitatDex(s, h);
   const fitting = G.habitatCandidates(s, h).filter((x) => !G.habitatOf(s, x.id)).length;
+  const invasion = G.galacticInvasion(s);
+  const pickups = G.pickupReady(s);
   body.innerHTML = `
+    ${invasion ? `<div class="panel galactic"><strong>⚠️ Team Galaktik besetzt ${esc(invasion.name)}!</strong><p class="small muted">Die Bewohner verstecken sich und trainieren nicht. ${G.galacticProgress(s)} / ${G.C.life.galactic.goalMinutes} Min Jagd oder Training mit passendem Typ vertreiben die Bande.</p></div>` : ''}
+    ${pickups ? `<button class="pill wide" data-action="pickup">🎁 Fundstücke abholen (${pickups})</button>` : ''}
     <p class="small muted">Lass PC-Pokémon an Orten wohnen, die zu ihrem Typ passen. Sie trainieren bei jeder Runde mit. · ${total} Bewohner · ${fullCount}/${H.places.length} voll</p>
     <div class="habitat-chips" role="tablist" aria-label="Lebensräume">${H.places.map((x) => { const ok = G.habitatUnlocked(s, x); const n = G.residentIDs(s, x).length;
       return `<button role="tab" class="habitat-chip ${x.id === h.id ? 'on' : ''} ${ok ? '' : 'locked'}" aria-selected="${x.id === h.id}" data-action="habitat-pick" data-id="${x.id}">
@@ -44,6 +48,8 @@ function renderHabitats(body) {
     <div class="habitat-scene ${open ? '' : 'locked'} time-${G.dayTime().id}">
       <img class="backdrop" src="img/habitats/${h.id}.png" alt="">
       <div class="place-sign"><strong>${esc(h.name)}</strong><small>${esc(h.place)}</small></div>
+      ${open && invasion?.id === h.id ? '<div class="galactic-sign">TEAM GALAKTIK</div>' : ''}
+      ${open && G.roamerIn(s, h) ? `<div class="roamer-sign"><img src="${ds(G.roamerIn(s, h))}" alt="">Gesichtet: ${esc(G.pokemonName(G.roamerIn(s, h)))}</div>` : ''}
       ${open && outbreak.habitatID === h.id ? `<div class="outbreak-sign"><img src="${ds(outbreak.dexID)}" alt="">Massenauftreten: ${esc(outbreak.name)}</div>` : ''}
       ${H.platforms.map((_, i) => { const p = residents[i];
         if (p) { const d = G.describe(p); return `<button class="habitat-mon bob${i % 2}" style="${sceneBox(i)}" data-action="inspect" data-id="${p.id}" aria-label="${esc(d.name)}, Level ${d.level}"><img src="${ds(d.spriteID, p.isShiny)}" alt="">${p.isShiny ? '<span class="sparkle" aria-hidden="true">✦</span>' : ''}</button>`; }
@@ -149,7 +155,7 @@ function renderDig(body) {
     }
     const art = found.map((p) => { const t = G.treasureOf(p);
       return `<div class="dig-find" style="left:${(p.x / U.columns) * 100}%;top:${(p.y / U.rows) * 100}%;width:${(t.width / U.columns) * 100}%;height:${(t.height / U.rows) * 100}%">
-        ${t.spriteID ? `<img src="${ds(t.spriteID)}" alt="">` : t.id === 'herzschuppe' ? '<span class="heart">♥</span>' : `<span class="sphere" style="--c:${t.colorHex}"></span>`}<small>${esc(t.name)}</small></div>`; }).join('');
+        ${t.spriteID ? `<img src="${ds(t.spriteID)}" alt="">` : t.stone ? `<span class="stone" style="--c:${t.colorHex}">◆</span>` : t.id === 'herzschuppe' ? '<span class="heart">♥</span>' : `<span class="sphere" style="--c:${t.colorHex}"></span>`}<small>${esc(t.name)}</small></div>`; }).join('');
     content = `
       <div class="row"><div class="segmented small">${U.tools.map((t) => `<button data-action="dig-tool" data-id="${t.id}" aria-selected="${t.id === tool}">${t.id === 'pickaxe' ? '⛏' : '🔨'} ${esc(t.name)}</button>`).join('')}</div>
         <div class="dig-stability"><small>Wand-Stabilität</small>${bar(wall.stability / U.maxStability, wall.stability < 15 ? 'var(--ball-red)' : 'var(--sun)')}</div></div>
@@ -165,9 +171,31 @@ function renderDig(body) {
   body.innerHTML = `
     <p class="small muted">Pro ${U.minutesPerDig} Fokus-Minuten bekommst du eine Grabung. Leg Kugeln, Herzschuppen und Fossilien frei, bevor die Wand einstürzt.</p>
     <div class="row"><strong>⛏ ${charges} / ${U.maxCharges} Grabungen bereit</strong>${charges < U.maxCharges ? `<span class="small muted">nächste in ${G.minutesToNextDig(s)} Min</span>` : ''}</div>
+    ${charges < U.maxCharges ? `<button class="pill quiet" data-action="buy-dig" ${G.canBuyDig(s) ? '' : 'disabled'}>+1 Grabung für ${G.C.zone.extra.extraDigPrice} Münzen (1× am Tag)</button>` : ''}
     ${content}
-    <p class="small muted">Kleine Kugel +10 Münzen · Große Kugel +30 · Herzschuppe: eine Beere · Fossilien erwachen als Koknodon, Schilterus, Amonitas, Kabuto, Anorith, Liliep oder Aerodactyl.</p>`;
+    ${secretBase(s)}
+    <p class="small muted">Kleine Kugel +10 Münzen · Große Kugel +30 · Herzschuppe: eine Beere · Entwicklungssteine landen im Beutel · Fossilien erwachen als Koknodon, Schilterus, Amonitas, Kabuto, Anorith, Liliep oder Aerodactyl.</p>`;
 }
+
+function secretBase(s) {
+  const L = G.C.life; const b = G.ensureJourney(s).base;
+  const owned = Object.keys(b.owned).filter((id) => id.startsWith('puppe-'));
+  const art = (item) => (item?.dex ? `<img src="${ds(item.dex)}" alt="">` : `<span class="decor" style="--c:${item?.colorHex}">${DECOR_ICON[item?.id] ?? '■'}</span>`);
+  const cells = [];
+  for (let y = 0; y < L.baseRows; y++) for (let x = 0; x < L.baseColumns; x++) {
+    const placed = b.placed.find((p) => p.x === x && p.y === y);
+    cells.push(`<button class="base-cell" data-action="base-cell" data-x="${x}" data-y="${y}" aria-label="${placed ? esc(G.decorItem(placed.item)?.name) : 'Freies Feld'}">${placed ? art(G.decorItem(placed.item)) : ''}</button>`);
+  }
+  const chip = (item) => { const free = G.decorAvailable(s, item.id);
+    return `<div class="decor-chip ${app.meta.baseItem === item.id ? 'on' : ''}">${art(item)}<small>${esc(item.name)}</small>
+      ${free > 0 ? `<button class="pill small" data-action="base-pick" data-id="${item.id}">${app.meta.baseItem === item.id ? 'Gewählt' : `Aufstellen (${free})`}</button>` : `<button class="pill quiet small" data-action="base-buy" data-id="${item.id}" ${s.coins < item.price ? 'disabled' : ''}>${item.price} Münzen</button>`}</div>`; };
+  return `<h3>Geheimbasis</h3>
+    <p class="small muted">Kauf Möbel und Puppen und stell sie auf: Teil wählen, dann auf ein freies Feld tippen. Ein Tipp auf ein Teil räumt es weg.</p>
+    <div class="base" style="--cols:${L.baseColumns}">${cells.join('')}</div>
+    <div class="decor-row">${[...L.decor, ...owned.map(G.decorItem)].map(chip).join('')}</div>
+    <label class="field">Puppe kaufen (${L.dollPrice} Münzen) <input data-action="doll" placeholder="Name oder Nummer, z. B. Plinfa" aria-label="Puppe kaufen"></label>`;
+}
+const DECOR_ICON = { pflanze: '🪴', tisch: '🪵', stuhl: '🪑', teppich: '▦', fass: '🛢', ziegel: '🧱', lampe: '💡', pokeball: '◓', flagge: '🚩' };
 
 // MARK: Team & PC
 function renderTeam(body) {
@@ -215,15 +243,23 @@ function renderTeam(body) {
       <button class="pill quiet" data-action="add-box">+ Box</button>
     </div>
     <div class="row wrap">
+      <select data-action="wallpaper" aria-label="Box-Hintergrund">${G.C.life.wallpapers.map((w) => `<option value="${w.id}" ${G.wallpaperOf(s, app.meta.boxIndex).id === w.id ? 'selected' : ''}>Hintergrund: ${esc(w.name)}</option>`).join('')}</select>
+      <button class="pill quiet ${app.meta.pcSelect ? 'on' : ''}" data-action="pc-select">${app.meta.pcSelect ? 'Auswahl beenden' : 'Auswählen'}</button>
+    </div>
+    ${app.meta.pcSelect ? `<div class="row wrap small"><strong>${(app.meta.pcPicked || []).length} ausgewählt</strong>
+      <select data-action="pc-move" aria-label="In Box verschieben"><option value="">In Box …</option>${s.pcBoxes.map((b, i) => `<option value="${i}">${esc(b.name)} (${b.pokemonIDs.length}/${G.BOX_CAPACITY})</option>`).join('')}</select>
+      <button class="pill quiet" data-action="pc-settle">In Lebensräume</button><button class="pill quiet" data-action="pc-pick-all">Alle</button></div>` : ''}
+    <div class="row wrap">
       <select data-action="pc-type" aria-label="Nach Typ filtern"><option value="">Alle Typen</option>${G.C.types.names.map((x) => `<option value="${x.id}" ${typeFilter === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
       <label class="switch"><input type="checkbox" data-action="pc-fit" ${fitOnly ? 'checked' : ''}> Passt in Lebensraum</label>
     </div>
     ${filtering ? `<div class="row wrap small">${hits.length ? 'Treffer:' : 'Keine Treffer im PC'} ${hits.map(([i, n]) => `<button class="chip ${i === app.meta.boxIndex ? 'on' : ''}" data-action="goto-box" data-index="${i}">${esc(s.pcBoxes[i].name)} (${n})</button>`).join('')}</div>` : ''}
-    <div class="pc-grid">
+    <div class="pc-grid" style="background:linear-gradient(${G.wallpaperOf(s, app.meta.boxIndex).colors[0]}99, ${G.wallpaperOf(s, app.meta.boxIndex).colors[1]}88)">
       ${Array.from({ length: G.BOX_CAPACITY }, (_, i) => box.pokemonIDs[i]).map((id) => {
         if (!id) return '<div class="cell"></div>';
         const p = G.findPokemon(s, id); const d = G.describe(p);
-        return `<button class="cell ${G.onExpedition(s, id) ? 'away' : ''} ${matches(p) ? '' : 'dim'}" data-action="inspect" data-id="${id}" aria-label="${esc(d.name)}, Level ${d.level}">
+        const picked = (app.meta.pcPicked || []).includes(id);
+        return `<button class="cell ${G.onExpedition(s, id) ? 'away' : ''} ${matches(p) ? '' : 'dim'} ${picked ? 'picked' : ''}" data-action="${app.meta.pcSelect ? 'pc-pick' : 'inspect'}" data-id="${id}" aria-label="${esc(d.name)}, Level ${d.level}${app.meta.pcSelect ? (picked ? ', ausgewählt' : ', nicht ausgewählt') : ''}">
           <img src="${pixel(d.spriteID, p.isShiny)}" alt="" loading="lazy">${badges(p)}<span class="lv">${d.level}</span></button>`;
       }).join('')}
     </div>
@@ -303,6 +339,7 @@ export function handle(action, el) {
     case 'biomes': biomeSheet(); return true;
     case 'select-biome': s.selectedBiome = el.dataset.id; return done(true);
     case 'dig-start': { const wall = G.startDig(s); if (wall) { meta.digWall = wall; meta.digResult = null; save(); saveMeta(); } app.render(); return true; }
+    case 'buy-dig': return done(G.buyDig(s), 'Eine Grabung mehr!', 'Heute schon gekauft oder zu wenig Münzen.');
     case 'dig-tool': meta.digTool = el.dataset.id; saveMeta(); app.render(); return true;
     case 'dig': {
       if (!meta.digWall) return true;
@@ -320,6 +357,19 @@ export function handle(action, el) {
     }
     case 'habitat-pick': meta.habitatID = el.dataset.id; saveMeta(); app.render(); return true;
     case 'habitat-add': habitatPicker(); return true;
+    case 'pickup': { const found = G.collectPickup(s); if (found.length) { save(); openSheet(`<h2>Mitnahme</h2><p>Deine Bewohner haben etwas gefunden:</p><ul class="result">${found.map((f) => `<li>${esc(f)}</li>`).join('')}</ul><button class="pill" data-action="close">Super</button>`); app.render(); } return true; }
+    case 'pc-select': meta.pcSelect = !meta.pcSelect; meta.pcPicked = []; saveMeta(); app.render(); return true;
+    case 'pc-pick': { const set = new Set(meta.pcPicked || []); set.has(el.dataset.id) ? set.delete(el.dataset.id) : set.add(el.dataset.id); meta.pcPicked = [...set]; saveMeta(); app.render(); return true; }
+    case 'pc-pick-all': meta.pcPicked = [...s.pcBoxes[meta.boxIndex].pokemonIDs]; saveMeta(); app.render(); return true;
+    case 'pc-settle': { const n = G.settleMany(s, meta.pcPicked || []); meta.pcPicked = []; saveMeta(); return done(n > 0, `${n} Pokémon sind eingezogen.`, 'Kein passender freier Lebensraum.'); }
+    case 'base-pick': meta.baseItem = el.dataset.id; saveMeta(); app.render(); return true;
+    case 'base-buy': { if (G.buyDecor(s, el.dataset.id)) { meta.baseItem = el.dataset.id; save(); saveMeta(); } else toast('Zu wenig Münzen.'); app.render(); return true; }
+    case 'base-cell': {
+      const x = Number(el.dataset.x); const y = Number(el.dataset.y);
+      if (G.ensureJourney(s).base.placed.some((p) => p.x === x && p.y === y)) G.removeDecor(s, x, y);
+      else if (meta.baseItem && !G.placeDecor(s, meta.baseItem, x, y)) toast('Kauf zuerst noch eins davon.');
+      save(); app.render(); return true;
+    }
     case 'habitat-auto': { const r = G.autoFillHabitat(s, currentHabitat()); return done(r.placed > 0, r.message, 'Kein passendes Pokémon frei.'); }
     case 'pension-pick': pensionPicker(); return true;
     case 'pension-add': {
@@ -358,6 +408,11 @@ export function change(el) {
     case 'preview': s.safariPreviewEnabled = el.checked; if (!G.biomeUnlocked(s, G.C.biomes.find((b) => b.id === s.selectedBiome))) s.selectedBiome = G.C.biomes[0].id; save(); closeSheet(); app.render(); return true;
     case 'pc-type': meta.pcType = el.value; saveMeta(); app.render(); return true;
     case 'pc-fit': meta.pcFit = el.checked; saveMeta(); app.render(); return true;
+    case 'pc-move': if (el.value !== '') { const n = G.moveMany(s, meta.pcPicked || [], Number(el.value)); meta.pcPicked = []; saveMeta(); save(); toast(`${n} Pokémon verschoben.`); app.render(); } return true;
+    case 'wallpaper': G.setWallpaper(s, meta.boxIndex, el.value); save(); app.render(); return true;
+    case 'doll': { const q = el.value.trim().toLowerCase(); const n = Number(q) || (G.C.names.findIndex((x) => x.toLowerCase().startsWith(q)) + 1);
+      if (q && n >= 1 && n <= 1025) { if (G.buyDecor(s, `puppe-${n}`)) { meta.baseItem = `puppe-${n}`; save(); saveMeta(); toast(`${G.pokemonName(n)}-Puppe gekauft.`); } else toast('Zu wenig Münzen.'); }
+      app.render(); return true; }
     case 'sort-box': if (el.value) { G.sortBox(s, meta.boxIndex, el.value); save(); app.render(); } return true;
     case 'log-shiny': meta.logShiny = el.checked; saveMeta(); app.render(); return true;
   }

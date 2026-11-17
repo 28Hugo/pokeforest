@@ -45,7 +45,8 @@ function berryPlots(s) {
         ${b && stage < 4 ? `<div class="bar-mini"><i style="width:${Math.round(G.plotProgress(plot) * 100)}%;background:${b.colorHex}"></i></div><small class="muted">${Math.max(0, P.growMinutes - plot.minutes)} Min</small>`
           : stage === 4 ? `<button class="pill small" data-action="harvest" data-index="${i}">Ernten</button>`
           : `<select data-action="plant" data-index="${i}" aria-label="Beere für Beet ${i + 1}"><option value="">Pflanzen …</option>${G.C.berries.map((x) => `<option value="${x.id}" ${inv[x.id] ? '' : 'disabled'}>${esc(x.name)} (${inv[x.id] || 0})</option>`).join('')}</select>`}
-      </div>`; }).join('')}</div></div>`;
+      </div>`; }).join('')}</div>
+    <button class="pill quiet" data-action="water" ${G.canWater(s) ? '' : 'disabled'}>💧 Gießen (+${G.C.zone.extra.waterMinutes} Min${G.ensureJourney(s).wateredDay === G.dayKey() ? ', heute schon gegossen' : ''})</button></div>`;
 }
 function renderItems(body) {
   const s = app.state;
@@ -82,6 +83,7 @@ export function handle(action, el) {
       return true;
     }
     case 'adopt-line': { const x = species(); if (x && G.adoptCopy(s, x)) { save(); toast('Neues Exemplar auf Level 1 – im Team oder PC.'); } else toast('Dafür fehlen dir PokéMünzen.'); app.render(); return true; }
+    case 'water': { const n = G.waterPlots(s); if (n) { save(); toast(`${n} Beete gegossen.`); } app.render(); return true; }
     case 'harvest': { const n = G.harvestPlot(s, Number(el.dataset.index)); if (n) { save(); toast(`+${n} Beeren geerntet.`); } app.render(); return true; }
     case 'buy-berry': if (G.buyBerry(s, el.dataset.id)) { save(); toast(`${G.berryName(el.dataset.id)} gekauft.`); } app.render(); return true;
     case 'wonder': if (confirm(`${G.WONDER_TRADE_PRICE} Münzen für einen Wunder-Tausch einsetzen?`)) { const msg = G.wonderTrade(s); save(); openSheet(`<h2>Wunder-Tausch</h2><p>${esc(msg)}</p><button class="pill" data-action="close">Super</button>`); app.render(); } return true;

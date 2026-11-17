@@ -319,9 +319,22 @@ export function releasePokemon(state, id, running) {
   state.unlockedSpeciesIDs ||= [];
   const c = canonical(state, p.species);
   if (!state.unlockedSpeciesIDs.includes(c.id)) state.unlockedSpeciesIDs.push(c.id);
+  lastReleased = { pokemon: structuredClone(p), wasInTeam: state.teamPokemonIDs.includes(id), box: boxOf(state, id), at: Date.now() };
   state.pokemonRoster = state.pokemonRoster.filter((x) => x.id !== id);
   normalizeTeam(state);
   return true;
+}
+let lastReleased = null;
+export const canUndoRelease = () => !!lastReleased && Date.now() - lastReleased.at <= 10000;
+export function undoRelease(state) {
+  if (!canUndoRelease()) { lastReleased = null; return null; }
+  const r = lastReleased; lastReleased = null;
+  state.pokemonRoster.push(r.pokemon);
+  state.pcBoxes.forEach((b) => { b.pokemonIDs = b.pokemonIDs.filter((x) => x !== r.pokemon.id); });
+  if (r.wasInTeam && state.teamPokemonIDs.length < TEAM_SIZE) state.teamPokemonIDs.push(r.pokemon.id);
+  else if (r.box >= 0 && state.pcBoxes[r.box] && state.pcBoxes[r.box].pokemonIDs.length < BOX_CAPACITY) state.pcBoxes[r.box].pokemonIDs.push(r.pokemon.id);
+  normalizeTeam(state);
+  return describe(r.pokemon).name;
 }
 export const isNew = (p, now = new Date()) => now.getTime() - fromSwiftDate(p.obtainedAt).getTime() < 86400000;
 
@@ -454,6 +467,7 @@ export function finishDig(state, wall) {
     result.treasures.push(t.name);
     result.coins += t.coins;
     if (t.id === 'herzschuppe') { const b = pick(C.berries); state.berryInventory[b.id] = (state.berryInventory[b.id] || 0) + 1; result.berries.push(b.name); }
+    if (t.stone) { const items = ensureJourney(state).items; items[t.stone] = (items[t.stone] || 0) + 1; (result.stones ||= []).push(t.name); }
     if (t.fossil) {
       addImportedSpecies(state, t.fossil);
       const species = canonical(state, t.fossil);
@@ -898,7 +912,7 @@ export function shinyPercent(state, session) {
 export const poffinKey = (id) => (id?.startsWith('Gold') ? 'gold' : id?.startsWith('Drachen') ? 'dragon' : id?.startsWith('Meister') ? 'zeit' : null);
 
 /** Pokémon EP for the partner this round, before the level-100 cap (pokemonExperienceBonus + minutes). */
-export function partnerEP(state, s) {
+export function partnerEP(state, s, now = new Date()) {
   if (s.mode !== 'owned') return { base: 0, bonus: 0, day: 0 };
   const p = findPokemon(state, state.selectedPokemonID);
   if (!p) return { base: 0, bonus: 0, day: 0 };
@@ -907,7 +921,9 @@ export function partnerEP(state, s) {
   const base = s.minutes * EXP_PER_MINUTE;
   const day = pokemonOfTheDay(state.pokemonRoster) === p.id ? Math.floor((base * DAY_BONUS_PERCENT) / 100) : 0;
   const habitat = partnerHabitatBonus(state, s) ? Math.floor((base * C.habitats.fullHabitatBonusPercent) / 100) : 0;
-  return { base, bonus: (pomodoroBonus + berry) * EXP_PER_MINUTE + day + habitat, day, habitat };
+  const naturePct = natureBonusPercent(p, s.minutes, now);
+  const nature = Math.floor((base * naturePct) / 100);
+  return { base, bonus: (pomodoroBonus + berry) * EXP_PER_MINUTE + day + habitat + nature, day, habitat, nature, naturePct };
 }
 export function coinPreview(state, s) {
   return trainingCoins(s.minutes, { mega: s.minutes >= 90, berry: state.activeBerryBuff === 'sananabeere', goldPoffin: s.poffin === 'gold', pomodoro: !!s.pomodoro });
@@ -917,6 +933,7 @@ export function coinPreview(state, s) {
 export function randomWildDexID(minutes, ownedLegends, huntTypes = [], plan = {}) {
   const tier = tierFor(minutes);
   const ordinary = Array.from({ length: 1025 }, (_, i) => i + 1).filter((id) => !C.legendary.has(id));
+  if (plan.forcedDexID) return plan.forcedDexID;
   // Massenauftreten: today's species shows up often in its habitat.
   if (plan.swarmDexID && tier !== 3 && randomInt(1, 100) <= J().outbreakChancePercent) return plan.swarmDexID;
   // Tageszeit: without a Jagdgebiet, the time of day favours some types.
@@ -941,7 +958,7 @@ export function randomWildDexID(minutes, ownedLegends, huntTypes = [], plan = {}
 const COLORS = { red: ['#F55C47', '#C93B2B'], blue: ['#3DA8F5', '#2970C7'], yellow: ['#FACC2E', '#E0991A'], green: ['#47C77A', '#298F5C'], purple: ['#A661EB', '#7038AD'], pink: ['#EB85C7', '#C44D99'], brown: ['#C78C56', '#8F5D30'], gray: ['#7C8B99', '#4B5663'], black: ['#7C8B99', '#4B5663'], white: ['#8AD6EB', '#58A3BD'] };
 /** Loads every evolution branch of a random wild Pokémon from PokeAPI, like the Mac. */
 export async function fetchWildEncounter(state, minutes) {
-  const dexID = randomWildDexID(minutes, ownedLegendaryIDs(state), huntHabitat(state)?.types ?? [], encounterPlan(state));
+  const dexID = randomWildDexID(minutes, ownedLegendaryIDs(state), huntHabitat(state)?.types ?? [], { ...encounterPlan(state), forcedDexID: roamerForNextRound(state, minutes) });
   const tier = C.tiers[tierFor(minutes)];
   const get = async (url) => { const r = await fetch(url); if (!r.ok) throw new Error(`PokeAPI ${r.status}`); return r.json(); };
   const species = await get(`https://pokeapi.co/api/v2/pokemon-species/${dexID}/`);
@@ -1046,7 +1063,7 @@ export function completeRound(state, s, now = new Date()) {
   const shiny = wild && randomInt(1, 100) <= shinyPercent(state, s);
   if (wild) advanceRadar(state, true);
   const partnerBefore = !wild && findPokemon(state, state.selectedPokemonID) ? { ...describe(findPokemon(state, state.selectedPokemonID)), experience: findPokemon(state, state.selectedPokemonID).experience } : null;
-  const ep = partnerEP(state, s);
+  const ep = partnerEP(state, s, now);
   const pomodoroBonusXP = s.pomodoro ? s.minutes + (s.round === s.pomodoro.rounds ? planCompletionXP(s.pomodoro) : 0) : 0;
   const dragon = s.poffin === 'dragon';
   state.activeBerryBuff = null;
@@ -1087,7 +1104,9 @@ export function completeRound(state, s, now = new Date()) {
     }
   }
   const habitatTraining = { amount: residentExperience(minutes), residents: [] };
+  const occupied = galacticInvasion(state, now)?.id;
   for (const h of C.habitats.places) {
+    if (h.id === occupied) continue;
     for (const id of state.habitatResidents?.[h.id] || []) {
       const m = findPokemon(state, id);
       if (!m || levelFor(m.experience) === 100) continue;
@@ -1105,6 +1124,10 @@ export function completeRound(state, s, now = new Date()) {
   const gym = wild ? null : applyGymRound(state, minutes, individual);
   const pension = advancePension(state, minutes, now);
   const ripeBerries = growPlots(state, minutes);
+  const tower = advanceTower(state, true);
+  const lifeNotes = [creditTask(state, minutes), advanceGalactic(state, minutes, wild, individual, now), wild ? null : rivalRound(state, minutes, individual, now), advanceSpear(state, minutes)].filter(Boolean);
+  if (!wild) trainCondition(state, individual, minutes);
+  const pensionTraining = trainPensionParents(state, minutes, evolutions);
   const finishedTrips = [];
   for (const trip of state.expeditions || []) {
     const goal = EXPEDITIONS[trip.kind].goal;
@@ -1123,11 +1146,15 @@ export function completeRound(state, s, now = new Date()) {
 
   // Eggs, raid, daycare and quests (applySessionProgressToEggsRaidDaycareAndQuests)
   const notes = [];
+  notes.push(...lifeNotes);
   if (gym) notes.push(`Arena: ${gym.summary}`);
   if (wild && radarChain(state) > 1) notes.push(`Pokéradar-Kette: ${radarChain(state)} · +${radarShinyBonus(radarChain(state))} % Shiny-Chance`);
   if (pension.foundEgg) notes.push(`Pension Trostu: Ein Ei ist da! (${pension.foundEgg}-Linie) Es schlüpft nach ${J().pension.hatchMinutes} Fokus-Minuten.`);
   if (pension.hatched) notes.push(`Geschlüpft: ${describe(pension.hatched).name}${pension.hatched.isShiny ? ' ✨' : ''} ist da!`);
   else if (state.journey.pension.egg && !pension.foundEgg) notes.push(`Ei: noch ${Math.max(0, state.journey.pension.egg.minutesLeft)} Fokus-Minuten`);
+  notes.push(`Kampfturm: Etage ${state.journey.tower.floor} · +${tower} Kampfpunkte${state.journey.tower.floor % Z().tower.bossEvery === 0 ? ' (Turm-Boss besiegt!)' : ''}`);
+  if (pensionTraining.names.length) notes.push(`Pension: +${pensionTraining.amount} EP für ${pensionTraining.names.join(', ')}`);
+  if (!wild && ep.naturePct) notes.push(`Wesen ${natureOf(individual).name}: +${ep.naturePct} % EP`);
   if (ripeBerries) notes.push(`Beerenbeet: ${ripeBerries} ${ripeBerries === 1 ? 'Beere ist' : 'Beeren sind'} reif zur Ernte`);
   if (undergroundFull) notes.push(`Untergrund voll: ${U().maxCharges} Grabungen warten`);
   const egg = (state.eggs || []).find((e) => !e.isHatched);
@@ -1137,7 +1164,7 @@ export function completeRound(state, s, now = new Date()) {
   }
   const raidBonus = wild ? 0 : d.raidBonus;
   const matchup = wild ? 'neutral' : raidMatchup(pokemonTypes(individual), typesOf(activeBoss(state).pokedexID));
-  const damage = Math.round(minutes * (dragon ? 3 : mega ? 2 : 1) * (1 + raidBonus / 100) * MATCHUP[matchup].multiplier);
+  const damage = Math.round(minutes * (dragon ? 3 : mega ? 2 : 1) * (1 + raidBonus / 100) * MATCHUP[matchup].multiplier * (shared.recipients.length ? L().raidShareMultiplier : 1));
   if (matchup !== 'neutral') notes.push(`Raid: ${MATCHUP[matchup].label}`);
   const defeated = damageBoss(state, damage);
   if (defeated) {
@@ -1183,12 +1210,15 @@ export function completeRound(state, s, now = new Date()) {
   };
 }
 
-export function failRound(state, s, reason, now = new Date()) {
+export function failRound(state, s, reason, now = new Date(), reasonID = null) {
   const rescue = state.activeBerryBuff === 'himmihbeere' && s.mode === 'owned' && !s.inBreak;
   state.activeBerryBuff = null;
   if (s.inBreak) return { chainEnded: true };
   const lostChain = s.mode === 'wild' ? radarChain(state) : 0;
   if (s.mode === 'wild') advanceRadar(state, false);
+  const lostFloor = ensureJourney(state).tower.floor;
+  advanceTower(state, false);
+  if (reasonID) state.journey.abortReasons[reasonID] = (state.journey.abortReasons[reasonID] || 0) + 1;
   const partner = findPokemon(state, state.selectedPokemonID);
   let rescued = null;
   if (rescue && partner && levelFor(partner.experience) < 100) {
@@ -1205,7 +1235,7 @@ export function failRound(state, s, reason, now = new Date()) {
   state.plantedTrees ||= [];
   state.plantedTrees.unshift({ id: newID(), species, durationMinutes: s.minutes, timestamp: toSwiftDate(now), survived: false, tagName: tag.name, tagColorHex: tag.colorHex,
     note: s.note ? `${s.note} (${reason})` : reason, coinsEarned: 0, isShiny: false, isMega: false, wasWildEncounter: s.mode === 'wild', biomeID: s.biomeID });
-  return { chainEnded: false, rescued, lostChain };
+  return { chainEnded: false, rescued, lostChain, lostFloor };
 }
 
 // MARK: Stats
@@ -1279,6 +1309,16 @@ export function ensureJourney(state) {
   const plots = j.berryPlots || [];
   j.berryPlots = Array.from({ length: J().berryPlots.count }, (_, i) => plots[i] ?? { id: newID(), minutes: 0 });
   for (const plot of j.berryPlots) { plot.id ||= newID(); plot.minutes ??= 0; }
+  j.tower ||= {}; j.tower.floor ??= 0; j.tower.best ??= 0; j.tower.points ??= 0;
+  j.items ||= {};
+  j.contest ||= {}; j.contest.conditions ||= {}; j.contest.ribbons ||= {}; j.contest.entries ||= [];
+  j.weeklyClaimed ||= [];
+  j.tasks ||= []; j.galacticCleared ||= []; j.galacticMinutes ??= 0;
+  j.rival ||= {}; j.rival.week ??= ''; j.rival.damage ??= 0; j.rival.beaten ??= false; j.rival.active ??= false;
+  j.spear ||= {}; j.spear.step ??= 0; j.spear.active ??= false;
+  j.base ||= {}; j.base.owned ||= {}; j.base.placed ||= [];
+  j.boxWallpapers ||= {}; j.abortReasons ||= {};
+  j.tutorialSeen ??= false; j.autoBreakMinutes ??= 0;
   return j;
 }
 export const pokemonName = (dex) => C.names[dex - 1] ?? `#${dex}`;
@@ -1433,6 +1473,7 @@ export function encounterPlan(state, now = new Date()) {
     huntChancePercent: radarChain(state) >= J().radar.lockOnChain ? 100 : C.huntTypeChancePercent,
     swarmDexID: hunt && hunt.id === outbreak.habitatID ? outbreak.dexID : null,
     timeTypes: dayTime(now).types,
+    forcedDexID: roamerForNextRound(state, null, now),
   };
 }
 
@@ -1515,3 +1556,386 @@ export function professorRating(state) {
   const n = ownedPokedexCount(state);
   return [...J().ratings].reverse().find((r) => n >= r.from) ?? J().ratings[0];
 }
+
+// MARK: 5.7 – Kampfzone, Beutel, Wandernde Legendäre, Wettbewerb, Wesen, Wochen-Quests (BattleZoneModels.swift)
+const Z = () => C.zone;
+const pad = (n, w = 2) => String(n).padStart(w, '0');
+export const dayKey = (d = new Date()) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+/** ISO week number and year, like Calendar(identifier: .iso8601). */
+function isoWeek(d) {
+  const t = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const day = (t.getDay() + 6) % 7;
+  t.setDate(t.getDate() - day + 3);
+  const firstThursday = new Date(t.getFullYear(), 0, 4);
+  const week = 1 + Math.round(((t - firstThursday) / 86400000 - 3 + ((firstThursday.getDay() + 6) % 7)) / 7);
+  return { year: t.getFullYear(), week };
+}
+export const weekKey = (d = new Date()) => { const w = isoWeek(d); return `${w.year}-W${pad(w.week)}`; };
+
+// Kampfturm
+export function advanceTower(state, success) {
+  const t = ensureJourney(state).tower;
+  if (!success) { t.floor = 0; return 0; }
+  t.floor += 1; t.best = Math.max(t.best, t.floor);
+  const points = Z().tower.pointsPerFloor + (t.floor % Z().tower.bossEvery === 0 ? Z().tower.bossBonus : 0);
+  t.points += points;
+  return points;
+}
+export function buyPrize(state, prizeID, stoneID) {
+  const prize = Z().prizes.find((x) => x.id === prizeID);
+  const j = ensureJourney(state);
+  if (!prize) return 'Unbekannt.';
+  if (j.tower.points < prize.price) return `Dir fehlen ${prize.price - j.tower.points} Kampfpunkte.`;
+  if (prizeID === 'sonderbonbon') j.items.sonderbonbon = (j.items.sonderbonbon || 0) + 1;
+  else if (prizeID === 'grabung') { if ((state.undergroundCharges ?? 1) >= U().maxCharges) return `Du hast schon ${U().maxCharges} Grabungen.`; state.undergroundCharges = (state.undergroundCharges ?? 1) + 1; }
+  else if (prizeID === 'schiller') state.berryInventory.schillerpin = (state.berryInventory.schillerpin || 0) + 1;
+  else if (prizeID === 'epBeere') state.berryInventory.epbeere = (state.berryInventory.epbeere || 0) + 1;
+  else if (prizeID === 'stein') { if (!stoneID) return 'Wähle einen Stein.'; j.items[stoneID] = (j.items[stoneID] || 0) + 1; }
+  j.tower.points -= prize.price;
+  return null;
+}
+
+// Beutel
+export const itemCount = (state, id) => state.journey?.items?.[id] || 0;
+export const stoneByID = (id) => Z().stones.find((x) => x.id === id);
+export function stoneNeeded(p) {
+  const d = describe(p);
+  if (d.stage >= Math.min(3, p.species.stages.length)) return null;
+  const next = p.species.stages[d.stage]?.pokedexID;
+  return next ? stoneByID(Z().stoneFor[String(next)]) ?? null : null;
+}
+export function useSonderbonbon(state, id, running = false) {
+  const p = findPokemon(state, id);
+  if (!p || (running && id === state.selectedPokemonID) || itemCount(state, 'sonderbonbon') < 1 || levelFor(p.experience) >= 100) return null;
+  const before = describe(p);
+  p.experience = Math.max(p.experience, threshold(before.level + 1));
+  state.journey.items.sonderbonbon -= 1;
+  const after = describe(p);
+  return { level: after.level, evolution: after.stage > before.stage ? evolutionEvent(p, before, after) : null };
+}
+export function useStone(state, stoneID, id, running = false) {
+  const p = findPokemon(state, id);
+  if (!p || (running && id === state.selectedPokemonID) || itemCount(state, stoneID) < 1 || stoneNeeded(p)?.id !== stoneID) return null;
+  const before = describe(p);
+  p.experience = Math.max(p.experience, threshold(before.nextEvolutionLevel));
+  state.journey.items[stoneID] -= 1;
+  return evolutionEvent(p, before, describe(p));
+}
+
+// Wandernde Legendäre
+export function roamerHabitat(dexID, date = new Date()) {
+  const day = Math.floor(startOfDay(date).getTime() / 86400000 + 0.5);
+  const i = Z().roamers.ids.indexOf(dexID);
+  const places = C.habitats.places;
+  return places[(((day * 5 + i * 2 + 1) % places.length) + places.length) % places.length];
+}
+export function roamersToday(state, date = new Date()) {
+  const owned = new Set([...ownedLegendaryIDs(state), ...state.pokemonRoster.map((p) => describe(p).spriteID)]);
+  return Z().roamers.ids.filter((id) => !owned.has(id)).map((id) => ({ dexID: id, habitat: roamerHabitat(id, date) }));
+}
+export const roamerIn = (state, h, date = new Date()) => roamersToday(state, date).find((r) => r.habitat.id === h.id)?.dexID ?? null;
+export function roamerForNextRound(state, minutes = null, date = new Date()) {
+  const hunt = huntHabitat(state);
+  if (!hunt || radarChain(state) < Z().roamers.minRadarChain) return null;
+  if (minutes != null && minutes < Z().roamers.minMinutes) return null;
+  return roamerIn(state, hunt, date);
+}
+
+// Wettbewerb
+export const contestCategories = () => Z().contest.categories;
+export const contestRanks = () => Z().contest.ranks;
+export const categoryOfWeek = (d = new Date()) => contestCategories()[isoWeek(d).week % 5];
+const CATEGORY_OF_TYPE = { 10: 0, 16: 0, 2: 0, 11: 1, 15: 1, 18: 1, 1: 2, 12: 2, 7: 2, 14: 3, 13: 3, 8: 3 };
+export const categoryOfType = (t) => CATEGORY_OF_TYPE[t] ?? 4;
+export function conditionsOf(state, id) { const v = state.journey?.contest?.conditions?.[id]; return Array.isArray(v) && v.length === 5 ? v : [0, 0, 0, 0, 0]; }
+function addCondition(state, id, category, points) {
+  const c = ensureJourney(state).contest;
+  const v = [...conditionsOf(state, id)];
+  v[category] = Math.min(Z().contest.maxCondition, v[category] + Math.max(0, points));
+  c.conditions[id] = v;
+}
+function trainCondition(state, p, minutes) {
+  const type = pokemonTypes(p)[0];
+  if (type) addCondition(state, p.id, categoryOfType(type), Math.max(1, Math.floor(minutes / 5)));
+}
+export function feedKnursp(state, berryID, id) {
+  if (!((state.berryInventory || {})[berryID] > 0) || !findPokemon(state, id)) return false;
+  state.berryInventory[berryID] -= 1;
+  for (const [cat, points] of Object.entries(Z().contest.feeding[berryID] || {})) addCondition(state, id, Number(cat), points);
+  return true;
+}
+export const contestScore = (state, p, cat) => conditionsOf(state, p.id)[cat] + Math.floor(levelFor(p.experience) / 2);
+export const ribbonsOf = (state, id) => state.journey?.contest?.ribbons?.[id] || [];
+export function rankUnlocked(state, rank, cat) {
+  if (rank === 0) return true;
+  return Object.values(ensureJourney(state).contest.ribbons).some((list) => list.includes(`${cat}-${rank - 1}`));
+}
+export const contestEntryKey = (rank, d = new Date()) => `${weekKey(d)}-${rank}`;
+export function canEnterContest(state, rank, d = new Date()) {
+  return rankUnlocked(state, rank, categoryOfWeek(d).id) && !ensureJourney(state).contest.entries.includes(contestEntryKey(rank, d));
+}
+export function enterContest(state, id, rank, d = new Date()) {
+  const p = findPokemon(state, id);
+  if (!p || !canEnterContest(state, rank, d)) return null;
+  const cat = categoryOfWeek(d); const r = contestRanks()[rank];
+  const score = contestScore(state, p, cat.id);
+  const won = score >= r.opponentScore;
+  const c = ensureJourney(state).contest;
+  c.entries.push(contestEntryKey(rank, d));
+  if (won) {
+    state.coins += r.rewardCoins;
+    const ribbon = `${cat.id}-${rank}`;
+    c.ribbons[id] ||= [];
+    if (!c.ribbons[id].includes(ribbon)) c.ribbons[id].push(ribbon);
+  }
+  const name = describe(p).name;
+  return { won, score, coins: won ? r.rewardCoins : 0, text: won ? `${name} gewinnt den ${r.name} in ${cat.name} mit ${score} Punkten! Band erhalten, +${r.rewardCoins} Münzen.`
+    : `${name} erreicht ${score} Punkte. Für den ${r.name} braucht es ${r.opponentScore}. Füttere Knursp und trainiere weiter.` };
+}
+
+// Wesen
+export function natureOf(p) {
+  let sum = 0;
+  const id = p.id.toUpperCase();
+  for (let i = 0; i < id.length; i++) sum += id.charCodeAt(i) * (i + 1);
+  return Z().natures[sum % 25];
+}
+export function natureBonusPercent(p, minutes, now = new Date()) {
+  const n = natureOf(p);
+  if (n.neutral) return Z().natureNeutralPercent;
+  const t = dayTime(now).id;
+  const fits = [minutes <= 25, minutes >= 60, t === 'morning', t === 'night', t === 'day'][n.stat];
+  return fits ? Z().natureBonusPercent : 0;
+}
+
+// Wochen-Quests & Rückblick
+export function weeklyProgress(state, questID, d = new Date()) {
+  const week = weekKey(d);
+  const rounds = survived(state).filter((t) => weekKey(entryDate(t)) === week);
+  if (questID === 'minutes') return rounds.reduce((a, t) => a + t.durationMinutes, 0);
+  if (questID === 'wild') return rounds.filter((t) => t.wasWildEncounter).length;
+  return new Set(rounds.filter((t) => !t.wasWildEncounter && t.pokemonID).map((t) => t.pokemonID)).size;
+}
+export const weeklyClaimed = (state, questID, d = new Date()) => ensureJourney(state).weeklyClaimed.includes(`${weekKey(d)}-${questID}`);
+export function claimWeekly(state, questID, d = new Date()) {
+  const q = Z().weekly.find((x) => x.id === questID);
+  if (!q || weeklyClaimed(state, questID, d) || weeklyProgress(state, questID, d) < q.target) return false;
+  const j = ensureJourney(state);
+  if (questID === 'minutes') state.coins += 60;
+  else if (questID === 'wild') state.berryInventory.schillerpin = (state.berryInventory.schillerpin || 0) + 1;
+  else j.tower.points += 3;
+  j.weeklyClaimed = [...j.weeklyClaimed, `${weekKey(d)}-${questID}`].slice(-30);
+  return true;
+}
+export const readyWeeklyCount = (state) => Z().weekly.filter((q) => !weeklyClaimed(state, q.id) && weeklyProgress(state, q.id) >= q.target).length;
+export function weeklyRecap(state, now = new Date()) {
+  const today = startOfDay(now);
+  const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - ((today.getDay() + 6) % 7));
+  const lastMonday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() - 7);
+  const rounds = survived(state).filter((t) => { const d = entryDate(t); return d >= lastMonday && d < monday; });
+  if (!rounds.length) return null;
+  const week = weekKey(lastMonday);
+  if (ensureJourney(state).recapShownWeek === week) return null;
+  const perDay = Array.from({ length: 7 }, (_, i) => { const start = new Date(lastMonday.getFullYear(), lastMonday.getMonth(), lastMonday.getDate() + i); const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1);
+    return rounds.filter((t) => { const d = entryDate(t); return d >= start && d < end; }).reduce((a, t) => a + t.durationMinutes, 0); });
+  const byPartner = {};
+  for (const t of rounds) if (!t.wasWildEncounter && t.pokemonID) byPartner[t.pokemonID] = (byPartner[t.pokemonID] || 0) + t.durationMinutes;
+  const best = Object.entries(byPartner).sort((a, b) => b[1] - a[1])[0];
+  const partner = best ? findPokemon(state, best[0]) : null;
+  return { week, perDay, rounds: rounds.length, total: perDay.reduce((a, b) => a + b, 0), caught: rounds.filter((t) => t.wasWildEncounter).length,
+    shinies: rounds.filter((t) => t.wasWildEncounter && t.isShiny).length, bestName: partner ? describe(partner).name : null, bestSprite: partner ? describe(partner).spriteID : null, bestMinutes: best ? best[1] : 0 };
+}
+export function markRecapShown(state, week) { ensureJourney(state).recapShownWeek = week; }
+
+// Gießen, Extra-Grabung, Pension-EP
+export const canWater = (state, d = new Date()) => ensureJourney(state).wateredDay !== dayKey(d) && state.journey.berryPlots.some((p) => p.berryID && !plotRipe(p));
+export function waterPlots(state, d = new Date()) {
+  if (!canWater(state, d)) return 0;
+  let n = 0;
+  for (const plot of state.journey.berryPlots) if (plot.berryID && !plotRipe(plot)) { plot.minutes += Z().extra.waterMinutes; n += 1; }
+  state.journey.wateredDay = dayKey(d);
+  return n;
+}
+export const canBuyDig = (state, d = new Date()) => ensureJourney(state).extraDigDay !== dayKey(d) && state.coins >= Z().extra.extraDigPrice && (state.undergroundCharges ?? 1) < U().maxCharges;
+export function buyDig(state, d = new Date()) {
+  if (!canBuyDig(state, d)) return false;
+  state.coins -= Z().extra.extraDigPrice; state.undergroundCharges = (state.undergroundCharges ?? 1) + 1; state.journey.extraDigDay = dayKey(d);
+  return true;
+}
+function trainPensionParents(state, minutes, evolutions) {
+  const amount = Math.floor((minutes * EXP_PER_MINUTE * Z().extra.pensionSharePercent) / 100);
+  const names = [];
+  if (!amount) return { names, amount };
+  for (const p of pensionParents(state)) {
+    if (levelFor(p.experience) >= 100) continue;
+    const before = describe(p);
+    p.experience = capXP(p.experience + amount);
+    const after = describe(p);
+    names.push(after.name);
+    if (after.stage > before.stage) evolutions.push(evolutionEvent(p, before, after));
+  }
+  return { names, amount };
+}
+export const shinyStats = (state) => ({ owned: state.pokemonRoster.filter((p) => p.isShiny).length, caught: survived(state).filter((t) => t.isShiny && t.wasWildEncounter).length });
+export function habitatForDex(dexID) { const types = typesOf(dexID); return C.habitats.places.find((h) => h.types.some((t) => types.includes(t))) ?? null; }
+
+// MARK: 5.8 – Memo, Team Galaktik, Rivale Barry, Speersäule, Geheimbasis, Mitnahme (TrainerLifeModels.swift)
+const L = () => C.life;
+// Memo-App
+export const activeTask = (state) => { const j = ensureJourney(state); return j.tasks.find((t) => t.id === j.activeTaskID && !t.done) ?? null; };
+export function addTask(state, title) {
+  const clean = String(title || '').trim().slice(0, L().taskMaxTitle);
+  if (!clean) return false;
+  const j = ensureJourney(state);
+  const task = { id: newID(), title: clean, minutes: 0, done: false };
+  j.tasks = [task, ...j.tasks].slice(0, L().taskMax);
+  j.activeTaskID = task.id;
+  return true;
+}
+export function setActiveTask(state, id) { ensureJourney(state).activeTaskID = id || null; }
+export function toggleTask(state, id) {
+  const j = ensureJourney(state); const t = j.tasks.find((x) => x.id === id);
+  if (!t) return; t.done = !t.done; if (t.done && j.activeTaskID === id) j.activeTaskID = null;
+}
+export function deleteTask(state, id) { const j = ensureJourney(state); j.tasks = j.tasks.filter((t) => t.id !== id); if (j.activeTaskID === id) j.activeTaskID = null; }
+function creditTask(state, minutes) {
+  const t = activeTask(state);
+  if (!t) return null;
+  t.minutes += minutes;
+  return `Aufgabe „${t.title}“: +${minutes} Min (gesamt ${t.minutes})`;
+}
+// Team Galaktik
+export const unlockedHabitats = (state) => C.habitats.places.filter((h) => habitatUnlocked(state, h));
+export function galacticInvasion(state, date = new Date()) {
+  const j = ensureJourney(state);
+  if (j.galacticCleared.includes(dayKey(date))) return null;
+  const day = Math.floor(startOfDay(date).getTime() / 86400000 + 0.5);
+  const list = unlockedHabitats(state);
+  if (day % 3 !== 0 || !list.length) return null;
+  return list[(((day * 7 + 3) % list.length) + list.length) % list.length];
+}
+export const galacticProgress = (state, date = new Date()) => (ensureJourney(state).galacticDay === dayKey(date) ? state.journey.galacticMinutes : 0);
+function advanceGalactic(state, minutes, wild, partner, date) {
+  const target = galacticInvasion(state, date);
+  if (!target) return null;
+  if (!(wild ? huntHabitat(state)?.id === target.id : habitatFits(target, partner))) return null;
+  const j = ensureJourney(state); const today = dayKey(date);
+  if (j.galacticDay !== today) { j.galacticDay = today; j.galacticMinutes = 0; }
+  j.galacticMinutes += minutes;
+  if (j.galacticMinutes < L().galactic.goalMinutes) return `Team Galaktik ${target.locative}: ${j.galacticMinutes} / ${L().galactic.goalMinutes} Min`;
+  j.galacticCleared = [...j.galacticCleared, today].slice(-20);
+  state.coins += L().galactic.rewardCoins;
+  j.items.sonderbonbon = (j.items.sonderbonbon || 0) + 1;
+  return `Team Galaktik aus ${target.name} vertrieben! +${L().galactic.rewardCoins} Münzen, +1 Sonderbonbon`;
+}
+// Rivale Barry
+export function rivalAce(state, date = new Date()) {
+  const badges = gymBadgeCount(state); const week = isoWeek(date).week;
+  const starters = [[390, 391, 392], [393, 394, 395], [387, 388, 389]];
+  const line = starters[week % 3]; const stage = badges < 3 ? 0 : badges < 6 ? 1 : 2;
+  const team = [line[stage], 398, 214, 407, 419, 143];
+  return badges === 0 ? line[0] : team[week % team.length];
+}
+export const rivalMaxHP = (state) => 50 + 20 * gymBadgeCount(state);
+export const rivalReward = (state) => 100 + 20 * gymBadgeCount(state);
+export function rival(state, date = new Date()) {
+  const r = ensureJourney(state).rival;
+  return r.week === weekKey(date) ? r : { week: weekKey(date), damage: 0, beaten: false, active: false };
+}
+export function startRival(state, running = false) { if (running) return; const r = rival(state); if (r.beaten) return; state.journey.rival = { ...r, active: true }; }
+export function leaveRival(state, running = false) { if (running) return; state.journey.rival = { ...rival(state), active: false }; }
+function rivalRound(state, minutes, partner, date) {
+  const r = rival(state, date);
+  if (!r.active || r.beaten) return null;
+  const m = raidMatchup(pokemonTypes(partner), typesOf(rivalAce(state, date)));
+  const damage = gymDamage(minutes, m);
+  r.damage += damage;
+  if (r.damage >= rivalMaxHP(state)) {
+    r.beaten = true; r.active = false;
+    state.coins += rivalReward(state); state.journey.tower.points += L().rival.rewardPoints;
+    state.journey.rival = r;
+    return `Rivale Barry besiegt! +${rivalReward(state)} Münzen, +${L().rival.rewardPoints} Kampfpunkte`;
+  }
+  state.journey.rival = r;
+  return `Rivale Barry: −${damage} KP (${SHORT_MATCHUP[m]}), noch ${rivalMaxHP(state) - r.damage} KP`;
+}
+// Speersäule
+export const spearOpen = (state) => isChampion(state);
+export function startSpear(state, version, running = false) {
+  const sp = ensureJourney(state).spear;
+  if (!spearOpen(state) || sp.step >= 3 || running) return;
+  sp.version ||= version === 'perl' ? 'perl' : 'diamant';
+  sp.active = true;
+}
+export const spearText = (state) => { const sp = ensureJourney(state).spear; return L().spear.steps[Math.min(3, sp.step)][sp.version || 'diamant']; };
+function advanceSpear(state, minutes) {
+  const sp = ensureJourney(state).spear;
+  if (!sp.active || sp.step >= 3 || minutes < L().spear.minMinutes) return null;
+  sp.step += 1;
+  let met = null;
+  if (sp.step === 2) met = sp.version === 'perl' ? [484, 'Palkia'] : [483, 'Dialga'];
+  if (sp.step === 3) { met = [487, 'Giratina']; sp.active = false; }
+  if (!met) return `Speersäule: ${spearText(state)}`;
+  const [dex, name] = met;
+  awardSpecies(state, { id: `legend-${name.toLowerCase()}`, displayName: `${name} (#${dex})`, stages: [{ pokedexID: dex, name }], price: 0,
+    primaryHex: dex === 487 ? '#5A5068' : dex === 483 ? '#4A6AB8' : '#C890C8', secondaryHex: '#2A2438', elementType: 'Legendär', loreText: 'Auf der Speersäule getroffen.' });
+  return `Speersäule: ${name} schließt sich dir an!`;
+}
+// Geheimbasis
+export function decorItem(id) {
+  const item = L().decor.find((x) => x.id === id);
+  if (item) return item;
+  const dex = id?.startsWith('puppe-') ? Number(id.slice(6)) : 0;
+  return dex ? { id, name: `${pokemonName(dex)}-Puppe`, price: L().dollPrice, colorHex: '#F28AB8', dex } : null;
+}
+export const decorAvailable = (state, id) => (ensureJourney(state).base.owned[id] || 0) - state.journey.base.placed.filter((x) => x.item === id).length;
+export function buyDecor(state, id) {
+  const item = decorItem(id);
+  if (!item || state.coins < item.price) return false;
+  state.coins -= item.price; const b = ensureJourney(state).base; b.owned[id] = (b.owned[id] || 0) + 1;
+  return true;
+}
+export function placeDecor(state, id, x, y) {
+  const b = ensureJourney(state).base;
+  if (decorAvailable(state, id) < 1 || x < 0 || y < 0 || x >= L().baseColumns || y >= L().baseRows || b.placed.some((p) => p.x === x && p.y === y)) return false;
+  b.placed.push({ id: newID(), item: id, x, y });
+  return true;
+}
+export function removeDecor(state, x, y) { const b = ensureJourney(state).base; b.placed = b.placed.filter((p) => !(p.x === x && p.y === y)); }
+// Box-Hintergründe
+export function wallpaperOf(state, index) {
+  const box = state.pcBoxes[index]; const list = L().wallpapers;
+  return list.find((w) => w.id === ensureJourney(state).boxWallpapers[box?.id]) ?? list[index % list.length];
+}
+export function setWallpaper(state, index, id) { const box = state.pcBoxes[index]; if (box) ensureJourney(state).boxWallpapers[box.id] = id; }
+// Mitnahme
+const pickupHabitats = (state, date = new Date()) => unlockedHabitats(state).filter((h) => residentIDs(state, h).length && h.id !== galacticInvasion(state, date)?.id);
+export const pickupReady = (state, date = new Date()) => (ensureJourney(state).pickupDay === dayKey(date) ? 0 : pickupHabitats(state, date).length);
+export function collectPickup(state, date = new Date()) {
+  if (!pickupReady(state, date)) return [];
+  const found = [];
+  for (const h of pickupHabitats(state, date)) {
+    const roll = randomInt(0, 99);
+    if (roll < 5) { state.journey.items.sonderbonbon = (state.journey.items.sonderbonbon || 0) + 1; found.push(`Sonderbonbon (${h.name})`); }
+    else if (roll < 55) { const b = pick(C.berries); state.berryInventory[b.id] = (state.berryInventory[b.id] || 0) + 1; found.push(`${b.name} (${h.name})`); }
+    else { const c = randomInt(10, 30); state.coins += c; found.push(`${c} Münzen (${h.name})`); }
+  }
+  state.journey.pickupDay = dayKey(date);
+  return found;
+}
+// Mehrfachauswahl
+export function moveMany(state, ids, boxIndex) {
+  let moved = 0;
+  for (const id of ids) {
+    const from = boxOf(state, id); const target = state.pcBoxes[boxIndex];
+    if (from < 0 || from === boxIndex || !target || target.pokemonIDs.length >= BOX_CAPACITY) continue;
+    state.pcBoxes[from].pokemonIDs = state.pcBoxes[from].pokemonIDs.filter((x) => x !== id); target.pokemonIDs.push(id); moved += 1;
+  }
+  return moved;
+}
+export function settleMany(state, ids) {
+  let n = 0;
+  for (const id of ids) { const h = suggestedHabitat(state, id); if (h && placeInHabitat(state, id, h)) n += 1; }
+  return n;
+}
+export const topAbortReason = (state) => Object.entries(ensureJourney(state).abortReasons).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;

@@ -1,5 +1,5 @@
 // Offline support: the app shell is cached on install, sprites and fonts on first use.
-const SHELL = 'pokeforest-shell-v6';
+const SHELL = 'pokeforest-shell-v8';
 const MEDIA = 'pokeforest-media-v1';
 const FILES = ['./', 'index.html', 'style.css', 'app.js', 'game.js', 'ui.js', 'catalog.json', 'views/training.js', 'views/safari.js', 'views/trainer.js', 'views/shop.js', 'views/more.js', 'manifest.webmanifest', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png',
   'img/habitats/trophaeengarten.png', 'img/habitats/ewigwald.png', 'img/habitats/grossmoor.png', 'img/habitats/erzelingen.png', 'img/habitats/windkraftwerk.png', 'img/habitats/kahlberg.png', 'img/habitats/altes-chateau.png', 'img/habitats/route-217.png', 'img/habitats/speersaeule.png'];

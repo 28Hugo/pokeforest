@@ -23,6 +23,26 @@ export const art = pixel;
 export const ds = (id, shiny) => (id > 1025 || id < 1 ? defaultSprite(id, shiny)
   : `${SPRITES}/versions/${id <= 493 ? 'generation-iv/platinum' : 'generation-v/black-white'}/${shiny ? 'shiny/' : ''}${id}.png`);
 /** Type badge in the handheld style. */
+/** Short original 8-bit melodies (square wave), not taken from the games. */
+const JINGLES = { levelUp: [[72, 2], [76, 2], [79, 2], [84, 6]], badge: [[67, 2], [72, 2], [76, 2], [79, 3], [76, 1], [79, 2], [84, 8]], hatch: [[76, 2], [74, 2], [76, 2], [79, 2], [0, 2], [81, 2], [84, 6]] };
+let audio = null;
+export function jingle(kind) {
+  if (app.meta?.sound === false) return;
+  try {
+    audio ||= new (window.AudioContext || window.webkitAudioContext)();
+    let t = audio.currentTime + 0.05;
+    for (const [note, len] of JINGLES[kind] || []) {
+      const dur = len * 0.075;
+      if (note) {
+        const osc = audio.createOscillator(); const gain = audio.createGain();
+        osc.type = 'square'; osc.frequency.value = 440 * 2 ** ((note - 69) / 12);
+        gain.gain.setValueAtTime(0.06, t); gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+        osc.connect(gain).connect(audio.destination); osc.start(t); osc.stop(t + dur);
+      }
+      t += dur;
+    }
+  } catch { /* no audio */ }
+}
 export const typeBadge = (n, small) => { const t = G.typeInfo(n); return `<span class="type ${small ? 'small' : ''} ${t.darkText ? 'dark' : ''}" style="--c:${t.colorHex}">${esc(t.name)}</span>`; };
 export const typeBadges = (list, small) => `<span class="types">${list.map((n) => typeBadge(n, small)).join('')}</span>`;
 export const duration = (m) => (m < 60 ? `${m} Min` : `${Math.floor(m / 60)} Std${m % 60 ? ` ${m % 60} Min` : ''}`);
@@ -51,12 +71,45 @@ export function saveMeta() { write(META_KEY, app.meta); }
 export function saveSession() { write(SESSION_KEY, app.session); }
 export function replaceState(state) { app.state = G.prepareSave(state); save(); }
 
-export function toast(message) {
+/** Short message; with `action` ({ label, action }) it carries a button, e.g. „Rückgängig“. */
+export function toast(message, action = null) {
   const el = $('#toast');
   el.textContent = message;
+  if (action) { const b = document.createElement('button'); b.className = 'link'; b.dataset.action = action.action; b.textContent = action.label; el.append(' ', b); }
   el.classList.add('show');
   clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => el.classList.remove('show'), 3600);
+  toast.timer = setTimeout(() => el.classList.remove('show'), action ? 10000 : 3600);
+}
+
+// MARK: Tutorial mit Prof. Eibe, Spielhilfe, Neu in dieser Version
+export function showTutorial(index = 0) {
+  const steps = G.C.life.tutorial;
+  const step = steps[index];
+  const last = index === steps.length - 1;
+  openSheet(`<div class="tutorial">
+    <div class="row"><small class="muted">Schritt ${index + 1} von ${steps.length}</small><button class="link" data-action="tutorial-done">Überspringen</button></div>
+    <div class="tutorial-card"><div><img src="${ds(step.spriteID)}" alt=""><small>Prof. Eibe</small></div>
+      <div><h2>${esc(step.title)}</h2><ul>${step.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul></div></div>
+    <div class="dots">${steps.map((_, i) => `<i class="${i === index ? 'on' : ''}"></i>`).join('')}</div>
+    <div class="row wrap">
+      ${step.page && index > 0 && !last ? `<button class="pill quiet" data-action="tutorial-show" data-page="${step.page}">Zeig mir das</button>` : ''}
+      <button class="pill quiet" data-action="help">Spielhilfe</button>
+      ${index > 0 ? `<button class="pill quiet" data-action="tutorial-step" data-index="${index - 1}">Zurück</button>` : ''}
+      ${last ? '<button class="pill" data-action="tutorial-first">Erste Runde: 15 Minuten</button>' : `<button class="pill" data-action="tutorial-step" data-index="${index + 1}">Weiter</button>`}
+    </div></div>`);
+}
+export function showHelp(query = '') {
+  const list = G.C.life.help.filter((h) => !query || `${h.title} ${h.text}`.toLowerCase().includes(query.toLowerCase()));
+  openSheet(`<h2>Spielhilfe von A bis Z</h2>
+    <input type="search" data-action="help-search" value="${esc(query)}" placeholder="Suchen" aria-label="Spielhilfe durchsuchen">
+    <div class="stack">${list.map((h) => `<div class="panel"><strong>${esc(h.title)}</strong><p class="small muted">${esc(h.text)}</p></div>`).join('') || '<p class="muted">Nichts gefunden.</p>'}</div>
+    <div class="row"><button class="pill quiet" data-action="tutorial">Tutorial</button><button class="pill" data-action="close">Schließen</button></div>`);
+}
+export function showWhatsNew() {
+  const w = G.C.life.whatsNew;
+  openSheet(`<h2>Neu in ${esc(w.version)}</h2><ul class="result">${w.items.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
+    <div class="row"><button class="pill quiet" data-action="tutorial">Tutorial ansehen</button><button class="pill" data-action="close">Los geht's</button></div>`,
+  () => { app.meta.lastSeenVersion = w.version; saveMeta(); });
 }
 
 export function openSheet(html, onClose) {
@@ -133,6 +186,21 @@ export function pokemonSheet(id) {
     : home ? `Wohnt ${home.locative}`
     : G.inPension(state, id) ? 'In der Pension Trostu' 
     : trip ? `Auf Expedition: ${G.EXPEDITIONS[trip.kind].title} (${trip.progressMinutes}/${G.EXPEDITIONS[trip.kind].goal} Min)` : `Im PC, ${state.pcBoxes[G.boxOf(state, id)]?.name ?? ''}`;
+  const nature = G.natureOf(p);
+  const stone = G.stoneNeeded(p);
+  const candies = G.itemCount(state, 'sonderbonbon');
+  const ribbons = G.ribbonsOf(state, id);
+  const cond = G.conditionsOf(state, id);
+  const stoneName = (dex) => G.stoneByID(G.C.zone.stoneFor[String(dex)])?.name;
+  const chain = p.species.stages.slice(0, 3).map((st, i) => `${i ? `<span class="evo-arrow">→<small>${esc(stoneName(st.pokedexID) ?? `Lv. ${p.species.stages.length === 2 ? 20 : i === 1 ? 16 : 36}`)}</small></span>` : ''}
+    <span class="evo-stage ${i + 1 <= d.stage ? '' : 'dim'}"><img src="${ds(st.pokedexID, app.meta.sheetShiny)}" alt=""><small>${esc(st.name)}</small></span>`).join('');
+  const journeyPanel = `<div class="panel stack small">
+    <div class="row"><strong>Entwicklungslinie</strong><button class="link" data-action="sheet-shiny" data-id="${id}">${app.meta.sheetShiny ? 'Normal zeigen' : 'Shiny zeigen'}</button></div>
+    <div class="evo-line">${chain}</div><p><strong>Wesen: ${esc(nature.name)}</strong> · <span class="muted">${esc(nature.hint)}</span></p>
+    <div class="conditions">${G.contestCategories().map((c) => `<div class="row"><span>${esc(c.name)}</span>${bar(cond[c.id] / G.C.zone.contest.maxCondition, c.colorHex)}<span>${cond[c.id]}</span></div>`).join('')}</div>
+    ${ribbons.length ? `<p>Bänder: ${ribbons.map((r) => { const [c, k] = r.split('-').map(Number); return `<span title="${esc(G.contestCategories()[c].name)}, ${esc(G.contestRanks()[k].name)}" style="color:${G.contestCategories()[c].colorHex}">🎀</span>`; }).join('')}</p>` : ''}
+    <div class="row wrap">${candies && !d.maxLevel ? `<button class="pill quiet" data-action="candy" data-id="${id}">Sonderbonbon geben (${candies})</button>` : ''}
+      ${stone ? `<button class="pill quiet" data-action="stone" data-id="${id}" data-stone="${stone.id}">${esc(stone.name)} verwenden (${G.itemCount(state, stone.id)})</button>` : ''}</div></div>`;
   let actions = '';
   if (!trip && id !== state.selectedPokemonID) actions += `<button class="pill" data-action="partner" data-id="${id}" ${running ? 'disabled' : ''}>Als Trainingspartner wählen</button>`;
   if (inTeam) actions += `<button class="pill quiet" data-action="to-pc" data-id="${id}" ${state.teamPokemonIDs.length <= 1 || (running && id === state.selectedPokemonID) ? 'disabled' : ''}>In den PC</button>`;
@@ -164,6 +232,7 @@ export function pokemonSheet(id) {
       <p class="small muted">${p.trainingMinutes} Min gemeinsam · ${p.sessions} Trainings · +${d.raidBonus} % Raid-Bonus</p>
     </div></div>
     ${trainerMemo(p)}
+    ${journeyPanel}
     <form class="row" data-form="rename" data-id="${id}"><input name="nickname" maxlength="24" placeholder="Spitzname" value="${esc(p.nickname)}" aria-label="Spitzname"><button class="pill quiet">Speichern</button></form>
     <div class="actions">${actions}
       ${legend ? '' : `<button class="pill quiet" data-action="adopt" data-species="${esc(p.species.id)}">Weiteres Exemplar · ${G.copyPrice(state, p.species)} Münzen</button>`}

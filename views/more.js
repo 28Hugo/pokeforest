@@ -77,7 +77,14 @@ function renderSettings(body) {
       <label class="field">Tagesziel in Minuten <input type="number" min="5" max="720" step="5" inputmode="numeric" value="${G.dailyGoal(s)}" data-setting="dailyGoal"></label>
       <p class="small muted">Heute: ${G.todayMinutes(s)} / ${G.dailyGoal(s)} Minuten.</p>
       <label class="field">Erscheinungsbild <select data-setting="appearance">${[['auto', 'Wie das Gerät'], ['light', 'Hell'], ['dark', 'Dunkel']].map(([id, label]) => `<option value="${id}" ${(app.meta.appearance || 'auto') === id ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
+      <label class="switch"><input type="checkbox" data-setting="wakeLock" ${app.meta.wakeLock ? 'checked' : ''}> Bildschirm anlassen <span class="small muted">während einer Runde</span></label>
+      <label class="switch"><input type="checkbox" data-setting="sound" ${app.meta.sound === false ? '' : 'checked'}> Melodien <span class="small muted">bei Level-up, Orden und Schlüpfen</span></label>
       <label class="switch"><input type="checkbox" data-setting="strict" ${app.meta.strict ? 'checked' : ''}> Strenger Modus <span class="small muted">ersetzt den Fokus-Wächter des Macs</span></label>
+    </div>
+    <div class="panel stack">
+      <h3>Hilfe</h3>
+      <div class="row wrap"><button class="pill quiet" data-action="tutorial">Tutorial mit Prof. Eibe</button><button class="pill quiet" data-action="help">Spielhilfe A–Z</button><button class="pill quiet" data-action="whats-new">Neu in ${esc(G.C.life.whatsNew.version)}</button></div>
+      <p class="small muted">Tasten 1–5 wechseln die Seiten, die Leertaste startet eine Runde.</p>
     </div>
     <div class="panel stack">
       <h3>Offline-Sprites</h3>
@@ -93,6 +100,7 @@ function renderSettings(body) {
     if (key === 'dailyGoal') { s.dailyGoalMinutes = Math.max(5, Math.min(720, Number(el.value) || 90)); save(); }
     if (key === 'appearance') { app.meta.appearance = el.value; saveMeta(); applyAppearance(); }
     if (key === 'strict') { app.meta.strict = el.checked; saveMeta(); }
+    if (key === 'wakeLock' || key === 'sound') { app.meta[key] = el.checked; saveMeta(); }
     app.render();
   }));
 }
@@ -150,7 +158,7 @@ export function handle(action, el) {
     case 'cache-sprites': cacheAllSprites(el); return true;
     case 'import': fileInput.click(); return true;
     case 'export': exportSave(); return true;
-    case 'fresh': replaceState(G.freshSave()); app.meta.tab = 'train'; saveMeta(); app.render(); return true;
+    case 'fresh': replaceState(G.freshSave()); app.meta.tab = 'train'; saveMeta(); app.render(); app.showTutorial?.(); return true;
     case 'station': app.meta.station = el.dataset.id; app.meta.radioOn = true; saveMeta(); app.render(); return true;
     case 'radio-play': app.meta.radioOn = true; saveMeta(); app.render(); return true;
     case 'radio-stop': app.meta.radioOn = false; saveMeta(); app.render(); return true;

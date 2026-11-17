@@ -1,5 +1,5 @@
 import * as G from './game.js';
-import { app, $, ds, save, saveMeta, toast, closeSheet, pokemonSheet, queueEvolutions, playEvolutions, loadAll } from './ui.js';
+import { app, $, esc, ds, jingle, openSheet, showTutorial, showHelp, showWhatsNew, save, saveMeta, toast, closeSheet, pokemonSheet, queueEvolutions, playEvolutions, loadAll } from './ui.js';
 import * as Training from './views/training.js';
 import * as Safari from './views/safari.js';
 import * as Trainer from './views/trainer.js';
@@ -22,7 +22,7 @@ app.render = function render() {
   $('[data-view="safari"]').dataset.badge = (s ? ready + G.habitatFitCount(s) : 0) || '';
   $('[data-view="shop"]').dataset.badge = (s ? G.ripePlotCount(s) : 0) || '';
   const quests = s ? (s.dailyQuests || []).filter((q) => !q.isClaimed && q.currentValue >= q.targetValue).length : 0;
-  $('[data-view="trainer"]').dataset.badge = quests || '';
+  $('[data-view="trainer"]').dataset.badge = (quests + (s ? G.readyWeeklyCount(s) : 0)) || '';
   const view = $('#view');
   if (!s) { renderWelcome(view); return; }
   VIEWS[tab].render(view);
@@ -72,12 +72,36 @@ function common(action, el) {
     }
     case 'release': {
       const p = G.findPokemon(s, el.dataset.id);
-      if (p && confirm(`${G.describe(p).name} wirklich freilassen? Level und Spitzname gehen verloren.`)) return done(G.releasePokemon(s, p.id, running), `${G.describe(p).name} wurde freigelassen.`, 'Freilassen ist gerade nicht möglich.');
+      if (p && confirm(`${G.describe(p).name} wirklich freilassen? Level und Spitzname gehen verloren.`)) {
+        const ok = G.releasePokemon(s, p.id, running);
+        done(ok, null, 'Freilassen ist gerade nicht möglich.');
+        if (ok) toast(`${G.describe(p).name} wurde freigelassen.`, { label: 'Rückgängig', action: 'undo-release' });
+      }
       return true;
     }
+    case 'undo-release': { const name = G.undoRelease(s); if (name) { save(); app.render(); toast(`${name} ist zurück.`); } else toast('Zu spät, nach 10 Sekunden geht es nicht mehr.'); return true; }
+    case 'sheet-shiny': app.meta.sheetShiny = !app.meta.sheetShiny; saveMeta(); pokemonSheet(el.dataset.id); return true;
+    case 'tutorial': showTutorial(0); return true;
+    case 'tutorial-step': showTutorial(Number(el.dataset.index)); return true;
+    case 'tutorial-show': { const page = el.dataset.page; app.meta.tab = page === 'underground' ? 'safari' : page === 'timer' ? 'train' : page; if (page === 'underground') app.meta.sub.safari = 'dig'; saveMeta(); closeSheet(); app.render(); toast('Weiter mit dem Tutorial: Mehr › Tutorial'); return true; }
+    case 'tutorial-done': G.ensureJourney(s).tutorialSeen = true; app.meta.lastSeenVersion = G.C.life.whatsNew.version; save(); closeSheet(); return true;
+    case 'tutorial-first': G.ensureJourney(s).tutorialSeen = true; app.meta.lastSeenVersion = G.C.life.whatsNew.version; app.meta.minutes = 15; app.meta.mode = 'owned'; app.meta.tab = 'train'; save(); closeSheet(); app.render(); return true;
+    case 'help': showHelp(); return true;
+    case 'whats-new': showWhatsNew(); return true;
     case 'adopt': {
       const species = s.pokemonRoster.find((p) => p.species.id === el.dataset.species)?.species;
       return done(species && G.adoptCopy(s, species), 'Neues Exemplar auf Level 1 – im Team oder PC.', 'Dafür fehlen dir PokéMünzen.');
+    }
+    case 'candy': {
+      const r = G.useSonderbonbon(s, el.dataset.id, running);
+      if (!r) { toast('Das geht gerade nicht.'); return true; }
+      if (r.evolution) queueEvolutions([r.evolution]);
+      done(true, `Sonderbonbon: jetzt Lv. ${r.level}!`); jingle('levelUp'); playEvolutions(); return true;
+    }
+    case 'stone': {
+      const ev = G.useStone(s, el.dataset.stone, el.dataset.id, running);
+      if (!ev) { toast(`Dir fehlt ein ${G.stoneByID(el.dataset.stone)?.name ?? 'Stein'}. Du findest ihn im Untergrund oder im Kampfpunkte-Laden.`); return true; }
+      queueEvolutions([ev]); done(true); playEvolutions(); return true;
     }
     case 'poffin': {
       if (app.meta.poffin === el.dataset.id) { toast('Dieser Knursp ist schon gebacken.'); return true; }
@@ -128,6 +152,35 @@ async function start() {
   Training.resume();
   app.render();
   prefetchOwnSprites();
+  if (app.state && !app.session) {
+    const j = G.ensureJourney(app.state);
+    if (!j.tutorialSeen && !(app.state.plantedTrees || []).length) showTutorial(0);
+    else if (app.meta.lastSeenVersion !== G.C.life.whatsNew.version && (app.state.plantedTrees || []).length) showWhatsNew();
+    else showWeeklyRecap();
+  }
+}
+app.showTutorial = () => showTutorial(0);
+app.showHelp = () => showHelp();
+// Tasten 1–5 wechseln die Seiten, solange kein Eingabefeld aktiv ist.
+document.addEventListener('keydown', (event) => {
+  if (event.metaKey || event.ctrlKey || event.altKey || !app.state) return;
+  if (event.target.closest?.('input, textarea, select, [contenteditable]') || document.querySelector('dialog[open]')) return;
+  const tab = ['train', 'safari', 'trainer', 'shop', 'more'][Number(event.key) - 1];
+  if (tab) { app.meta.tab = tab; saveMeta(); app.render(); window.scrollTo(0, 0); }
+});
+document.addEventListener('input', (event) => { if (event.target.dataset?.action === 'help-search') { const v = event.target.value; showHelp(v); const i = document.querySelector('[data-action="help-search"]'); i?.focus(); i?.setSelectionRange(v.length, v.length); } });
+/** Monday: last week's summary, once. */
+function showWeeklyRecap() {
+  const s = app.state;
+  if (!s || app.session) return;
+  const r = G.weeklyRecap(s);
+  if (!r) return;
+  const peak = Math.max(1, ...r.perDay);
+  openSheet(`<h2>Deine Woche ${esc(r.week)}</h2>
+    <div class="week big">${r.perDay.map((m, i) => `<div><small>${m}</small><span style="height:${Math.round((m / peak) * 100)}%"></span><small>${['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'][i]}</small></div>`).join('')}</div>
+    <p><strong>${r.total} Min Fokus</strong> · ${r.rounds} Runden · ${r.caught} gefangen${r.shinies ? ` · ${r.shinies} Shiny` : ''}</p>
+    ${r.bestName ? `<div class="row"><img src="${ds(r.bestSprite)}" alt="" style="width:64px;image-rendering:pixelated"><p>Dein Partner der Woche: <strong>${esc(r.bestName)}</strong> mit ${r.bestMinutes} Minuten.</p></div>` : ''}
+    <button class="pill" data-action="close">Auf in die neue Woche</button>`, () => { G.markRecapShown(app.state, r.week); save(); });
 }
 /** Keeps the sprites of your own Pokémon (all their stages) and of the gym aces offline. */
 function prefetchOwnSprites() {
