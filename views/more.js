@@ -1,6 +1,6 @@
 // Mehr: PokéRadio, settings and sync with the Mac.
 import * as G from '../game.js';
-import { app, $, esc, pixel, segmented, sub, save, saveMeta, toast, replaceState, openSheet } from '../ui.js';
+import { app, $, esc, pixel, ds, segmented, sub, save, saveMeta, toast, replaceState, openSheet } from '../ui.js';
 
 export function render(view) {
   view.innerHTML = `${segmented('more', [['radio', 'Poké-Radio'], ['settings', 'Einstellungen'], ['sync', 'Sync']])}<div id="more-body"></div>`;
@@ -79,6 +79,11 @@ function renderSettings(body) {
       <label class="field">Erscheinungsbild <select data-setting="appearance">${[['auto', 'Wie das Gerät'], ['light', 'Hell'], ['dark', 'Dunkel']].map(([id, label]) => `<option value="${id}" ${(app.meta.appearance || 'auto') === id ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
       <label class="switch"><input type="checkbox" data-setting="strict" ${app.meta.strict ? 'checked' : ''}> Strenger Modus <span class="small muted">ersetzt den Fokus-Wächter des Macs</span></label>
     </div>
+    <div class="panel stack">
+      <h3>Offline-Sprites</h3>
+      <p class="small muted">Speichert die DS-Sprites aller 1025 Pokémon auf diesem Gerät (rund 3 MB). Danach sieht alles auch ohne Internet richtig aus. Deine eigenen Pokémon werden automatisch gespeichert.</p>
+      <button class="pill quiet" data-action="cache-sprites" id="cache-sprites">${app.meta.spritesCached ? 'Alle Sprites gespeichert ✓ · erneut prüfen' : 'Alle 1025 Sprites speichern'}</button>
+    </div>
     <h3>Fokus-Tags</h3>
     <div class="panel stack">${s.tags.map((t) => `<div class="row"><span><span class="dot" style="background:${t.colorHex}"></span>${esc(t.name)}</span>${s.tags.length > 1 ? `<button class="icon-btn small" data-action="delete-tag" data-id="${t.id}" aria-label="${esc(t.name)} löschen">×</button>` : ''}</div>`).join('')}
       <form class="row" data-form="tag"><input name="name" maxlength="20" placeholder="Neuer Tag" required aria-label="Neuer Tag"><input name="color" type="color" value="#34C759" aria-label="Farbe"><button class="pill quiet">Hinzufügen</button></form></div>
@@ -142,6 +147,7 @@ async function exportSave() {
 
 export function handle(action, el) {
   switch (action) {
+    case 'cache-sprites': cacheAllSprites(el); return true;
     case 'import': fileInput.click(); return true;
     case 'export': exportSave(); return true;
     case 'fresh': replaceState(G.freshSave()); app.meta.tab = 'train'; saveMeta(); app.render(); return true;
@@ -173,3 +179,23 @@ export function submit(form) {
   return true;
 }
 export { openSheet, pixel };
+
+/** Fetches every DS sprite once; the service worker keeps them (cache first). */
+async function cacheAllSprites(button) {
+  if (!navigator.onLine) { toast('Dafür brauchst du einmal Internet.'); return; }
+  button.disabled = true;
+  const urls = Array.from({ length: 1025 }, (_, i) => ds(i + 1));
+  let done = 0;
+  const worker = async () => {
+    while (urls.length) {
+      const url = urls.pop();
+      try { await fetch(url, { mode: 'cors' }); } catch { /* skipped, tried again next time */ }
+      done += 1;
+      if (done % 25 === 0) button.textContent = `Speichere … ${done} / 1025`;
+    }
+  };
+  await Promise.all(Array.from({ length: 6 }, worker));
+  app.meta.spritesCached = true; saveMeta();
+  button.disabled = false; button.textContent = 'Alle Sprites gespeichert ✓ · erneut prüfen';
+  toast('Alle 1025 DS-Sprites sind jetzt offline verfügbar.');
+}

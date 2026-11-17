@@ -1,6 +1,6 @@
-// Trainer & Raids: badges, raids, quests, eggs, daycare, research, league, Pokédex and profile.
+// Trainer & Raids: badges, gyms, raids, quests, eggs, research, league, Pokédex and profile.
 import * as G from '../game.js';
-import { app, $, esc, art, pixel, typeBadges, num, bar, segmented, sub, save, saveMeta, toast, openSheet, closeSheet } from '../ui.js';
+import { app, $, esc, art, pixel, ds, typeBadges, num, bar, segmented, sub, save, saveMeta, toast, openSheet, closeSheet } from '../ui.js';
 
 export function render(view) {
   const s = app.state;
@@ -17,10 +17,10 @@ export function render(view) {
         <p class="small" style="color:${rank.colorHex}">Lv. ${level} · ${rank.badgeEmoji} ${esc(rank.title)}${streak ? ` · ${streak} ${streak === 1 ? 'Tag' : 'Tage'} Serie` : ''}</p>
         ${bar(progress, rank.colorHex)}<p class="small muted">${num(G.trainerThreshold(level + 1) - xp)} XP bis zum nächsten Level</p></div>
     </div>
-    ${segmented('trainer', [['badges', 'Orden'], ['raids', 'Raids & Quests'], ['research', 'Forschung'], ['league', 'Liga & Pokédex'], ['profile', 'Profil']])}
+    ${segmented('trainer', [['badges', 'Orden'], ['gyms', 'Arenen'], ['raids', 'Raids & Quests'], ['research', 'Forschung'], ['league', 'Liga & Pokédex'], ['profile', 'Profil']])}
     <div id="trainer-body"></div>`;
   const body = $('#trainer-body', view);
-  ({ badges: renderBadges, raids: renderRaids, research: renderResearch, league: renderLeague, profile: renderProfile })[sub('trainer', 'badges')](body);
+  ({ badges: renderBadges, gyms: renderGyms, raids: renderRaids, research: renderResearch, league: renderLeague, profile: renderProfile })[sub('trainer', 'badges')](body);
 }
 
 function renderBadges(body) {
@@ -31,6 +31,48 @@ function renderBadges(body) {
       <div class="row"><h4>${r}</h4><span class="small muted">${list.filter((b) => b.earned).length} von ${list.length}</span></div>
       <div class="badge-grid">${list.map((b) => `<button class="badge-tile ${b.earned ? 'earned' : ''}" style="--accent:${b.color}" data-action="badge" data-id="${b.id}">
         <span class="medal"></span><strong>${esc(b.name)}</strong><small>${b.earned ? 'Erhalten' : 'Noch offen'}</small></button>`).join('')}</div>`; }).join('')}`;
+}
+
+const BADGE_ICON = { 'sinnoh-coal': '◆', 'sinnoh-forest': '❦', 'sinnoh-cobble': '⬢', 'sinnoh-fen': '💧', 'sinnoh-relic': '✧', 'sinnoh-mine': '⚒', 'sinnoh-icicle': '❄', 'sinnoh-beacon': '☀' };
+function renderGyms(body) {
+  const s = app.state;
+  const running = !!app.session;
+  const active = G.activeChallenge(s);
+  const c = active ?? G.nextChallenge(s);
+  const partner = G.findPokemon(s, s.selectedPokemonID);
+  let card;
+  if (!c) {
+    card = `<div class="panel champion"><h3>👑 Du bist Champ von Sinnoh!</h3><p class="small muted">Alle Orden und die ganze Liga gehören dir. Die Liga kann dich erneut fordern, mit mehr KP.</p>
+      <button class="pill" data-action="league-rematch" ${running ? 'disabled' : ''}>Revanche gegen die Liga</button></div>`;
+  } else {
+    const max = G.challengeMaxHP(s, c);
+    const hp = active ? G.gymHPLeft(s) : max;
+    const m = G.gymMatchup(partner, c);
+    const counter = G.bestCounter(s, G.challengeTypes(c));
+    card = `<div class="panel gym-card" style="--accent:${c.colorHex}">
+      <div class="gym-ace"><img src="${ds(c.aceDexID)}" alt="${esc(G.pokemonName(c.aceDexID))}"></div>
+      <div class="stack">
+        <div><h3>${esc(c.title)} ${esc(c.leader)}</h3><p class="small muted">${esc(c.place)}${c.badgeName ? ` · ${esc(c.badgeName)}` : ''}</p></div>
+        <p class="quote">„${esc(c.quote)}“</p>
+        <p class="small"><strong>${esc(G.pokemonName(c.aceDexID))}</strong> ${typeBadges(G.challengeTypes(c), true)}</p>
+        <div class="row small"><strong class="note-sun">KP</strong><span>${hp} / ${max}</span></div>
+        ${bar(hp / Math.max(1, max), hp / max < 0.2 ? '#E3463B' : hp / max < 0.5 ? '#F5C542' : '#47C77A')}
+        ${partner ? `<p class="small ${m === 'super' ? 'note-share' : m === 'weak' ? 'note-sun' : 'muted'}">${esc(G.describe(partner).name)}: ${G.SHORT_MATCHUP[m]}</p>` : ''}
+        <p class="small muted">Schwächen: ${G.weaknesses(G.challengeTypes(c)).map((t) => G.typeInfo(t).name).join(', ')}</p>
+        <div class="row wrap">
+          ${active ? `<button class="pill" data-action="tab" data-view="train">Zum Training</button><button class="pill quiet" data-action="leave-gym" ${running ? 'disabled' : ''}>Kampf verlassen</button>`
+            : `<button class="pill" data-action="challenge" data-id="${c.id}" ${running ? 'disabled' : ''}>Herausfordern</button>`}
+          ${counter && counter.id !== partner?.id ? `<button class="pill quiet" data-action="partner" data-id="${counter.id}" ${running ? 'disabled' : ''}>Konter: ${esc(G.describe(counter).name)} Lv. ${G.describe(counter).level}</button>` : ''}
+        </div>
+      </div></div>`;
+  }
+  body.innerHTML = `
+    <p class="small muted">Fordere einen Arenaleiter heraus. Jede Trainingsrunde mit deinem eigenen Partner zieht seinem Pokémon KP ab: 1 KP pro Minute, mit Typvorteil doppelt so viel.</p>
+    <div class="badge-case">${G.gyms().map((g) => `<div class="case-slot ${G.isDefeated(s, g) ? 'won' : ''}" style="--accent:${g.colorHex}" title="${esc(g.badgeName)} · ${esc(g.leader)}, ${esc(g.place)}"><span>${BADGE_ICON[g.id] ?? '★'}</span><small>${esc(g.badgeName)}</small></div>`).join('')}</div>
+    <p class="small muted">${G.gymBadgeCount(s)} / 8 Orden</p>
+    ${card}
+    <h3>Pokémon-Liga ${s.journey?.gyms?.leagueRematches ? `<span class="small muted">Revanche ${s.journey.gyms.leagueRematches}</span>` : ''}</h3>
+    <div class="league-row">${G.league().map((l) => `<div class="${G.isDefeated(s, l) ? 'won' : G.challengeAvailable(s, l) ? 'open' : 'locked'}"><img src="${ds(l.aceDexID)}" alt=""><strong>${esc(l.leader)}</strong><small>${esc(l.title)}</small></div>`).join('')}</div>`;
 }
 
 function renderRaids(body) {
@@ -46,21 +88,19 @@ function renderRaids(body) {
         <p class="small muted">${num(boss.currentHP)} / ${num(boss.maxHP)} KP · Belohnung ${boss.rewardCoins} Münzen + ${esc(G.lineTitle(boss.rewardSpecies))} · ${boss.defeatedCount}× besiegt</p>
         <p class="small">Schwach gegen: ${typeBadges(G.weaknesses(G.typesOf(boss.pokedexID)), true)}</p>
         ${(() => { const m = G.currentRaidMatchup(s); const p = G.findPokemon(s, s.selectedPokemonID); return `<p class="small ${m === 'super' ? 'note-share' : m === 'weak' ? 'note-sun' : 'muted'}">${p ? `${esc(G.describe(p).name)}: ` : ''}${G.MATCHUP[m].label}</p>`; })()}
+        ${(() => { const c = G.bestCounter(s, G.typesOf(boss.pokedexID)); return c && c.id !== s.selectedPokemonID ? `<button class="pill quiet" data-action="partner" data-id="${c.id}" ${app.session ? 'disabled' : ''}>Bester Konter: ${esc(G.describe(c).name)} Lv. ${G.describe(c).level}</button>` : ''; })()}
         <p class="small muted">1 Min = 1 KP · Mega-Runde ×2 · Drachen-Knursp ×3 · passender Typ des Partners ×2, unpassender ×0,5.</p>
         <button class="pill quiet" data-action="bosses" ${app.session ? 'disabled' : ''}>Boss wechseln</button></div>
     </div>
     <h3>Tagesquests</h3>
-    <div class="stack">${quests.map((q) => `<div class="panel row"><div><strong>${esc(q.title)}</strong>${q.kind === 'type' ? ` ${typeBadges([q.typeID], true)}` : ''}${bar(q.currentValue / q.targetValue)}<span class="small muted">${q.currentValue} / ${q.targetValue} · ${G.C.quests.find((d) => d.kind === q.kind)?.rewardCoins ?? q.rewardCoins} Münzen</span></div>
+    <div class="stack">${quests.map((q) => `<div class="panel row"><div><strong>${esc(q.title)}</strong>${q.kind === 'type' ? ` ${typeBadges([q.typeID], true)}` : ''}${bar(q.currentValue / q.targetValue)}<span class="small muted">${q.currentValue} / ${q.targetValue} · ${G.C.quests.find((d) => d.kind === q.kind)?.rewardCoins ?? q.rewardCoins} Münzen</span>
+      ${(() => { if (q.kind !== 'type' || q.currentValue >= q.targetValue) return ''; const pick = G.bestOfType(s, q.typeID); return pick && pick.id !== s.selectedPokemonID ? `<button class="link" data-action="partner" data-id="${pick.id}" ${app.session ? 'disabled' : ''}>${esc(G.describe(pick).name)} wählen</button>` : ''; })()}</div>
       <button class="pill" data-action="claim-quest" data-id="${q.id}" ${q.isClaimed || q.currentValue < q.targetValue ? 'disabled' : ''}>${q.isClaimed ? 'Abgeholt' : 'Abholen'}</button></div>`).join('')}</div>
     <h3>Pokémon-Eier</h3>
     <div class="stack">${(s.eggs || []).map((e) => `<div class="panel row"><img class="egg" src="${e.isHatched ? pixel(e.rewardSpecies.stages[0].pokedexID) : 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/mystery-egg.png'}" alt="">
       <div><strong>${esc(e.title)}</strong>${bar(e.accumulatedMinutes / e.requiredMinutes)}<span class="small muted">${e.isHatched ? `Geschlüpft: ${esc(e.rewardSpecies.displayName)}` : `${e.accumulatedMinutes} / ${e.requiredMinutes} Fokus-Minuten`}</span></div></div>`).join('')}
       <p class="small muted">Es brütet immer das erste ungeschlüpfte Ei.</p></div>
-    <h3>Pension Route 34</h3>
-    <div class="stack">${(s.daycareSlots || []).map((slot, i) => `<div class="panel daycare-slot"><img src="${pixel(slot.species.stages[0].pokedexID)}" alt="">
-      <div><strong>${esc(slot.species.displayName)}</strong><br><span class="small muted">Zuneigung ${slot.affectionLevel} · ${'♥'.repeat(Math.min(5, 1 + Math.floor(slot.affectionLevel / 5)))} · ${slot.accumulatedMinutes} Min</span></div>
-      <select data-action="daycare" data-index="${i}" aria-label="Pokémon für Platz ${i + 1}"><option value="">Wechseln …</option>${G.unlockedSpecies(s).map((sp) => `<option value="${esc(sp.id)}">${esc(sp.displayName)}</option>`).join('')}</select></div>`).join('')}
-      <p class="small muted">Alle 30 Fokus-Minuten steigt die Zuneigung, mit einem kleinen Münz-Geschenk.</p></div>`;
+    <p class="small muted">Die Pension Trostu mit Eiern findest du unter Safari › Pension.</p>`;
 }
 function bossSheet() {
   const s = app.state;
@@ -116,6 +156,7 @@ function renderLeague(body) {
       <p class="small muted">Eine Belohnung je Kalenderwoche.</p></div>
     <div class="panel"><h3>Rivalen dieser Woche</h3>${G.C.rivals.map((r) => `<div class="rival"><img src="${pixel(r.partnerPokedexID)}" alt=""><div><strong>${esc(r.name)}</strong><span class="small muted">${esc(r.title)} · ${r.weeklyTargetMinutes} Min</span></div>
       <span class="small ${league.minutes >= r.weeklyTargetMinutes ? 'note-sun' : 'muted'}">${league.minutes >= r.weeklyTargetMinutes ? 'Besiegt' : `noch ${r.weeklyTargetMinutes - league.minutes} Min`}</span></div>`).join('')}</div>
+    ${(() => { const r = G.professorRating(s); return `<div class="panel memo prof"><small class="muted">Prof. Eibe bewertet deinen Pokédex</small><h3>${esc(r.title)} · ${G.ownedPokedexCount(s)} / 1025</h3><p>„${esc(r.text)}“</p></div>`; })()}
     <div class="row"><h3>Pokédex <span class="small muted">${G.ownedPokedexCount(s)} / 1025 gefangen</span></h3><label class="switch"><input type="checkbox" data-action="dex-shiny" ${shiny ? 'checked' : ''}> Shiny</label></div>
     <select data-action="dex-type" aria-label="Pokédex nach Typ filtern"><option value="">Alle Typen</option>${G.C.types.names.map((x) => `<option value="${x.id}" ${Number(app.meta.dexType) === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
     <p class="small muted">${dex.filter((x) => G.isUnlocked(s, x)).length} von ${dex.length} entdeckten Linien freigeschaltet.</p>
@@ -152,6 +193,9 @@ export function handle(action, el) {
     case 'research-partner': if (G.choosePartner(s, el.dataset.id)) { app.meta.mode = 'owned'; app.meta.minutes = Number(el.dataset.minutes); app.meta.pomodoroEnabled = false; app.meta.tab = 'train'; saveMeta(); return done('Training vorbereitet.'); } return true;
     case 'claim-league': return done(G.claimLeague(s) ? '+40 Münzen für die Wochen-Liga!' : null);
     case 'avatar': s.selectedAvatarID = el.dataset.id; return done();
+    case 'challenge': { const c = G.challengeByID(el.dataset.id); return done(c && G.startChallenge(s, c, !!app.session) ? `${c.leader} nimmt deine Herausforderung an!` : null); }
+    case 'leave-gym': G.leaveChallenge(s, !!app.session); return done();
+    case 'league-rematch': G.startLeagueRematch(s, !!app.session); return done('Die Liga erwartet dich erneut.');
   }
   return false;
 }
@@ -162,11 +206,6 @@ export function change(el) {
     case 'league-goal': s.weeklyLeagueGoal = Number(el.value); save(); app.render(); return true;
     case 'dex-shiny': app.meta.dexShiny = el.checked; saveMeta(); app.render(); return true;
     case 'dex-type': app.meta.dexType = el.value; saveMeta(); app.render(); return true;
-    case 'daycare': {
-      const species = G.unlockedSpecies(s).find((x) => x.id === el.value);
-      if (species) { s.daycareSlots[Number(el.dataset.index)] = { id: G.newID(), species, affectionLevel: 1, accumulatedMinutes: 0 }; save(); app.render(); }
-      return true;
-    }
   }
   return false;
 }

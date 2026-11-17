@@ -1,5 +1,5 @@
 import * as G from './game.js';
-import { app, $, save, saveMeta, toast, closeSheet, pokemonSheet, queueEvolutions, playEvolutions, loadAll } from './ui.js';
+import { app, $, ds, save, saveMeta, toast, closeSheet, pokemonSheet, queueEvolutions, playEvolutions, loadAll } from './ui.js';
 import * as Training from './views/training.js';
 import * as Safari from './views/safari.js';
 import * as Trainer from './views/trainer.js';
@@ -20,6 +20,7 @@ app.render = function render() {
   $('#goal').title = s ? `Heute ${G.todayMinutes(s)} / ${G.dailyGoal(s)} Min` : '';
   const ready = s ? (s.expeditions || []).filter((t) => t.progressMinutes >= G.EXPEDITIONS[t.kind].goal).length : 0;
   $('[data-view="safari"]').dataset.badge = (s ? ready + G.habitatFitCount(s) : 0) || '';
+  $('[data-view="shop"]').dataset.badge = (s ? G.ripePlotCount(s) : 0) || '';
   const quests = s ? (s.dailyQuests || []).filter((q) => !q.isClaimed && q.currentValue >= q.targetValue).length : 0;
   $('[data-view="trainer"]').dataset.badge = quests || '';
   const view = $('#view');
@@ -126,6 +127,18 @@ async function start() {
   More.applyAppearance();
   Training.resume();
   app.render();
+  prefetchOwnSprites();
+}
+/** Keeps the sprites of your own Pokémon (all their stages) and of the gym aces offline. */
+function prefetchOwnSprites() {
+  const s = app.state;
+  if (!s || !navigator.onLine || !('caches' in window)) return;
+  const ids = new Set(G.C.journey.challenges.map((c) => c.aceDexID));
+  for (const p of s.pokemonRoster) p.species.stages.forEach((st) => ids.add(st.pokedexID));
+  const shiny = s.pokemonRoster.filter((p) => p.isShiny).map((p) => G.describe(p).spriteID);
+  const urls = [...[...ids].filter((id) => id >= 1 && id <= 1025).map((id) => ds(id)), ...shiny.map((id) => ds(id, true))];
+  const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 1500));
+  idle(async () => { for (const url of urls) { try { await fetch(url, { mode: 'cors' }); } catch { return; } } });
 }
 if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
 start();

@@ -5,10 +5,10 @@ import { app, $, esc, art, pixel, ds, typeBadges, duration, num, bar, segmented,
 export function render(view) {
   const section = sub('safari', 'meadow');
   view.innerHTML = `<div class="row"><h2>Safari</h2><span class="muted small">${app.state.pokemonRoster.length} Begleiter</span></div>
-    ${segmented('safari', [['meadow', 'Lebensräume'], ['team', 'Team & PC'], ['dig', `Untergrund${(app.state.undergroundCharges ?? 1) > 0 ? ` (${app.state.undergroundCharges ?? 1})` : ''}`], ['stats', 'Statistik'], ['log', 'Logbuch']])}
+    ${segmented('safari', [['meadow', 'Lebensräume'], ['pension', `Pension${app.state.journey?.pension?.egg ? ' 🥚' : ''}`], ['team', 'Team & PC'], ['dig', `Untergrund${(app.state.undergroundCharges ?? 1) > 0 ? ` (${app.state.undergroundCharges ?? 1})` : ''}`], ['stats', 'Statistik'], ['log', 'Logbuch']])}
     <div id="safari-body"></div>`;
   const body = $('#safari-body', view);
-  ({ meadow: renderHabitats, team: renderTeam, dig: renderDig, stats: renderStats, log: renderLog })[section](body);
+  ({ meadow: renderHabitats, pension: renderPension, team: renderTeam, dig: renderDig, stats: renderStats, log: renderLog })[section](body);
 }
 
 // MARK: Lebensräume (Sinnoh habitats with DS battle backdrops)
@@ -32,17 +32,21 @@ function renderHabitats(body) {
   const fullCount = H.places.filter((x) => G.habitatFull(s, x)).length;
   const partner = G.findPokemon(s, s.selectedPokemonID);
   const boosted = G.partnerHabitatBonus(s, { mode: 'owned' });
+  const outbreak = G.massOutbreak();
+  const dex = G.habitatDex(s, h);
+  const fitting = G.habitatCandidates(s, h).filter((x) => !G.habitatOf(s, x.id)).length;
   body.innerHTML = `
     <p class="small muted">Lass PC-Pokémon an Orten wohnen, die zu ihrem Typ passen. Sie trainieren bei jeder Runde mit. · ${total} Bewohner · ${fullCount}/${H.places.length} voll</p>
     <div class="habitat-chips" role="tablist" aria-label="Lebensräume">${H.places.map((x) => { const ok = G.habitatUnlocked(s, x); const n = G.residentIDs(s, x).length;
       return `<button role="tab" class="habitat-chip ${x.id === h.id ? 'on' : ''} ${ok ? '' : 'locked'}" aria-selected="${x.id === h.id}" data-action="habitat-pick" data-id="${x.id}">
         <img src="img/habitats/${x.id}.png" alt=""><span><strong>${esc(x.name)}</strong><small>${ok ? `${n}/${H.capacity}${n >= H.capacity ? ' ★' : ''}` : `ab ${num(x.requiredMinutes)} Min 🔒`}</small>
         <i>${x.types.map((t) => `<b style="background:${G.typeInfo(t).colorHex}"></b>`).join('')}</i></span></button>`; }).join('')}</div>
-    <div class="habitat-scene ${open ? '' : 'locked'}">
+    <div class="habitat-scene ${open ? '' : 'locked'} time-${G.dayTime().id}">
       <img class="backdrop" src="img/habitats/${h.id}.png" alt="">
       <div class="place-sign"><strong>${esc(h.name)}</strong><small>${esc(h.place)}</small></div>
+      ${open && outbreak.habitatID === h.id ? `<div class="outbreak-sign"><img src="${ds(outbreak.dexID)}" alt="">Massenauftreten: ${esc(outbreak.name)}</div>` : ''}
       ${H.platforms.map((_, i) => { const p = residents[i];
-        if (p) { const d = G.describe(p); return `<button class="habitat-mon" style="${sceneBox(i)}" data-action="inspect" data-id="${p.id}" aria-label="${esc(d.name)}, Level ${d.level}"><img src="${ds(d.spriteID, p.isShiny)}" alt=""></button>`; }
+        if (p) { const d = G.describe(p); return `<button class="habitat-mon bob${i % 2}" style="${sceneBox(i)}" data-action="inspect" data-id="${p.id}" aria-label="${esc(d.name)}, Level ${d.level}"><img src="${ds(d.spriteID, p.isShiny)}" alt="">${p.isShiny ? '<span class="sparkle" aria-hidden="true">✦</span>' : ''}</button>`; }
         if (!open) return '';
         const [x, y] = H.platforms[i];
         return `<button class="habitat-free" style="left:${(x / SCENE_W) * 100}%;top:${((y - 2) / SCENE_H) * 100}%" data-action="habitat-add" aria-label="Freier Platz: Pokémon einziehen lassen">+</button>`; }).join('')}
@@ -53,6 +57,7 @@ function renderHabitats(body) {
       ${typeBadges(h.types)}
       <div class="row small"><strong>Bewohner</strong><span>${residents.length} / ${H.capacity}</span></div>
       ${bar(residents.length / H.capacity, full ? 'var(--sun)' : null)}
+      <p class="small muted">Pokédex dieser Typen: ${dex.owned} / ${dex.total}</p>
       <ul class="bonus-list small">
         <li>🚶 Bewohner bekommen ${H.residentSharePercent} % deiner Fokus-Minuten als EP.</li>
         <li class="${full ? 'note-sun' : ''}">${full ? '★' : '☆'} ${full ? `Voll: Partner vom Typ ${h.types.map((t) => G.typeInfo(t).name).join(' oder ')} bekommen +${H.fullHabitatBonusPercent} % EP.` : `Wenn voll: Partner vom passenden Typ bekommen +${H.fullHabitatBonusPercent} % EP.`}</li>
@@ -60,6 +65,7 @@ function renderHabitats(body) {
         ${partner && boosted?.id === h.id ? `<li class="note-share">✓ ${esc(G.describe(partner).name)} profitiert gerade davon.</li>` : ''}
       </ul>
       <button class="pill" data-action="habitat-add" ${!open || full ? 'disabled' : ''}>Pokémon einziehen lassen</button>
+      ${open && !full && fitting ? `<button class="pill quiet" data-action="habitat-auto">✨ Passende einziehen lassen (${Math.min(fitting, H.capacity - residents.length)})</button>` : ''}
     </div>
     ${residents.length ? `<div class="stack">${residents.map((p) => { const d = G.describe(p);
       return `<div class="panel resident-row"><img src="${ds(d.spriteID, p.isShiny)}" alt="">
@@ -92,6 +98,39 @@ function biomeSheet() {
     <button class="pill quiet" data-action="close">Schließen</button>`);
 }
 
+// MARK: Pension Trostu
+function renderPension(body) {
+  const s = app.state;
+  const P = G.C.journey.pension;
+  const j = G.ensureJourney(s);
+  const parents = G.pensionParents(s);
+  const egg = j.pension.egg;
+  body.innerHTML = `
+    <p class="small muted">Gib zwei Pokémon ab. Nach ${P.eggMinutes} Fokus-Minuten findet das Paar ein Ei, nach weiteren ${P.hatchMinutes} Minuten schlüpft ein Pokémon in der Grundform.${j.pension.hatchedCount ? ` · ${j.pension.hatchedCount} geschlüpft` : ''}</p>
+    <div class="pension">
+      ${Array.from({ length: P.capacity }, (_, i) => parents[i]).map((p) => { if (!p) return '<button class="pension-slot empty" data-action="pension-pick"><span>＋</span>Pokémon abgeben</button>';
+        const d = G.describe(p); return `<div class="pension-slot"><img src="${ds(d.spriteID, p.isShiny)}" alt=""><strong>${esc(d.name)}</strong><small>Lv. ${d.level}</small>
+          <button class="link" data-action="pension-leave" data-id="${p.id}">Abholen</button></div>`; }).join('')}
+    </div>
+    <div class="panel egg-panel">
+      ${egg ? `<div class="egg" style="--wobble:${(4 + 8 * G.eggProgress(egg)).toFixed(1)}deg;--speed:${Math.max(0.25, 1.2 - G.eggProgress(egg)).toFixed(2)}s" aria-hidden="true"></div>
+        <div><h3>Ein Ei</h3><p class="small">${esc(G.eggStatus(egg))}</p>${bar(G.eggProgress(egg), 'var(--sun)')}<p class="small muted">Noch ${Math.max(0, egg.minutesLeft)} Fokus-Minuten</p></div>`
+      : parents.length >= P.capacity ? `<div><h3>Die beiden verstehen sich gut.</h3>${bar(j.pension.minuteBank / P.eggMinutes, '#EB85C7')}<p class="small muted">Ei in ${P.eggMinutes - j.pension.minuteBank} Fokus-Minuten</p></div>`
+      : `<div><h3>Noch kein Paar</h3><p class="small muted">Das Ei ist von der Linie eines der beiden. Mit einem Shiny-Elternteil ist die Shiny-Chance doppelt so hoch.</p></div>`}
+    </div>`;
+}
+function pensionPicker() {
+  const s = app.state;
+  const list = G.pensionCandidates(s, !!app.session);
+  openSheet(`<h2>Wen gibst du in die Pension?</h2>
+    <p class="small muted">Pension-Pokémon wohnen im PC und trainieren nicht, bis du sie abholst. Legendäre Pokémon legen keine Eier.</p>
+    ${list.length ? `<div class="stack">${list.map((p) => { const d = G.describe(p);
+      return `<div class="panel resident-row"><img src="${ds(d.spriteID, p.isShiny)}" alt="">
+        <div><strong>${esc(d.name)}</strong> <span class="small muted">Lv. ${d.level}${s.teamPokemonIDs.includes(p.id) ? ' · im Team' : ''}</span>${typeBadges(G.pokemonTypes(p), true)}</div>
+        <button class="pill" data-action="pension-add" data-from="picker" data-id="${p.id}">Abgeben</button></div>`; }).join('')}</div>` : '<p class="muted">Gerade kann kein Pokémon in die Pension.</p>'}
+    <button class="pill quiet" data-action="close">Fertig</button>`);
+}
+
 // MARK: Untergrund (digging like in Diamant/Perl)
 function renderDig(body) {
   const s = app.state;
@@ -114,7 +153,8 @@ function renderDig(body) {
     content = `
       <div class="row"><div class="segmented small">${U.tools.map((t) => `<button data-action="dig-tool" data-id="${t.id}" aria-selected="${t.id === tool}">${t.id === 'pickaxe' ? '⛏' : '🔨'} ${esc(t.name)}</button>`).join('')}</div>
         <div class="dig-stability"><small>Wand-Stabilität</small>${bar(wall.stability / U.maxStability, wall.stability < 15 ? 'var(--ball-red)' : 'var(--sun)')}</div></div>
-      <div class="dig-wall" style="--cols:${U.columns};--rows:${U.rows}">${cells.join('')}${art}</div>
+      <p class="small note-sun">✨ ${wall.items.length} Funde funkeln in dieser Wand</p>
+      <div class="dig-wall ${app.meta.digShake ? 'shake' : ''} cracks-${Math.min(4, Math.floor((1 - wall.stability / U.maxStability) * 5))}" style="--cols:${U.columns};--rows:${U.rows}">${cells.join('')}${art}</div>
       <p class="small muted">Tippe auf die Wand. Spitzhacke kostet 1 Stabilität, der Hammer 2 und trifft mehr Fels. ${found.length} von ${wall.items.length} Funden liegen frei.</p>
       <button class="pill wide" data-action="dig-finish">Fertig, Funde mitnehmen</button>`;
   } else {
@@ -146,7 +186,7 @@ function renderTeam(body) {
     return !query || `${G.describe(p).name} ${p.species.displayName} ${p.species.stages.map((x) => x.name).join(' ')} ${types.map((n) => G.typeInfo(n).name).join(' ')} #${G.describe(p).spriteID}`.toLowerCase().includes(query);
   };
   const hits = filtering ? s.pcBoxes.map((b, i) => [i, b.pokemonIDs.filter((id) => matches(G.findPokemon(s, id))).length]).filter(([, n]) => n) : [];
-  const badges = (p) => `${p.id === dayID ? '<span class="badge sun">☀︎</span>' : ''}${G.onExpedition(s, p.id) ? '<span class="badge trip">⛺</span>' : ''}${G.isNew(p) ? '<span class="badge new">Neu</span>' : ''}`;
+  const badges = (p) => `${p.id === dayID ? '<span class="badge sun">☀︎</span>' : ''}${G.onExpedition(s, p.id) ? '<span class="badge trip">⛺</span>' : ''}${G.inPension(s, p.id) ? '<span class="badge pension">♥</span>' : ''}${G.isNew(p) ? '<span class="badge new">Neu</span>' : ''}`;
   body.innerHTML = `
     <div class="row"><h3>Dein Team</h3><span class="muted">${s.teamPokemonIDs.length} / ${G.TEAM_SIZE}</span></div>
     <div class="team-grid">
@@ -268,7 +308,10 @@ export function handle(action, el) {
       if (!meta.digWall) return true;
       const over = G.strikeWall(meta.digWall, Number(el.dataset.x), Number(el.dataset.y), meta.digTool || 'pickaxe');
       if (over) return handle('dig-finish', el);
-      saveMeta(); app.render(); return true;
+      meta.digShake = !meta.digShake; saveMeta(); app.render();
+      document.querySelector('.dig-wall')?.classList.remove('shake', 'shake2');
+      requestAnimationFrame(() => document.querySelector('.dig-wall')?.classList.add('shake'));
+      return true;
     }
     case 'dig-finish': {
       if (!meta.digWall) return true;
@@ -277,6 +320,16 @@ export function handle(action, el) {
     }
     case 'habitat-pick': meta.habitatID = el.dataset.id; saveMeta(); app.render(); return true;
     case 'habitat-add': habitatPicker(); return true;
+    case 'habitat-auto': { const r = G.autoFillHabitat(s, currentHabitat()); return done(r.placed > 0, r.message, 'Kein passendes Pokémon frei.'); }
+    case 'pension-pick': pensionPicker(); return true;
+    case 'pension-add': {
+      const ok = G.addToPension(s, el.dataset.id, !!app.session);
+      if (!ok) { toast(G.pensionProblem(s, el.dataset.id, !!app.session) || 'Das geht gerade nicht.'); return true; }
+      save(); toast(`${G.describe(G.findPokemon(s, el.dataset.id)).name} ist jetzt in der Pension.`);
+      if (el.dataset.from === 'picker' && G.pensionParents(s).length < G.C.journey.pension.capacity) pensionPicker(); else closeSheet();
+      app.render(); return true;
+    }
+    case 'pension-leave': G.removeFromPension(s, el.dataset.id); return done(true, 'Abgeholt. Es wartet im PC.');
     case 'habitat-place': {
       const message = G.placeInHabitat(s, el.dataset.id, currentHabitat());
       if (!message) { toast('Das geht gerade nicht.'); return true; }

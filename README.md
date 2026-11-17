@@ -3,15 +3,15 @@
 Eine Web-App, die denselben Spielstand wie die Mac-App nutzt. Kein Build-Schritt: reine HTML/CSS/JS-Dateien.
 
 ## Was sie kann (wie die Mac-App)
-- **Pokétch:** der Timer als Uhr aus Diamant/Perl, mit den Apps Fokus-Uhr, Schrittzähler und Pokémon-Liste. 2 EP pro Fokus-Minute.
+- **Pokétch:** der Timer als Uhr aus Diamant/Perl, mit den Apps Fokus-Uhr, Schrittzähler, Pokémon-Liste, Freundschaftstest, Kalender und Analoguhr. Leertaste startet eine Runde. 2 EP pro Fokus-Minute.
 - **Training:** eigenes Pokémon (Lv. 1–100, Entwicklungen, Mega) oder wilde Begegnung (#1–#1025, vier Seltenheiten), Ring-Timer 5–180 Min, Pomodoro-Ketten, Ewigstein-Pause, Beeren, Knursp, Fokus-Tags, Notizen, Vorlagen, Runden-Rückblick. Läuft weiter, wenn du die App schließt.
-- **Safari:** 9 Sinnoh-Lebensräume im Stil der Diamant/Perl-Kampfhintergründe (PC-Pokémon mit passendem Typ ziehen ein und trainieren mit), Team & PC (Boxen, Sortieren, Suchen, Tauschen, EP-Teiler), Expeditionen, Statistik (Heute/Woche/Monat/Gesamt, 28-Tage-Karte, Fokus-Tags), Logbuch.
+- **Safari:** 9 Sinnoh-Lebensräume im Stil der Diamant/Perl-Kampfhintergründe (PC-Pokémon mit passendem Typ ziehen ein und trainieren mit, täglich ein Massenauftreten), Pension Trostu mit Eiern, Team & PC (Boxen, Sortieren, Suchen, Tauschen, EP-Teiler), Expeditionen, Statistik (Heute/Woche/Monat/Gesamt, 28-Tage-Karte, Fokus-Tags), Logbuch.
 - **Untergrund:** pro 25 Fokus-Minuten eine Grabung mit Kugeln, Herzschuppen und Fossilien.
-- **Typen:** Jagdgebiete für wilde Begegnungen, Typ-Tagesquest, Raids mit Original-Typtabelle.
-- **Trainer:** 30 Orden, Raids, Tagesquests, Eier, Pension, Forschung mit Regionen, Wochen-Liga mit Rivalen, Pokédex, Profil und Profilbilder.
-- **Shop:** Linien freischalten, Exemplare adoptieren, Beeren, Knursp-Bäckerei, Wunder-Tausch, Profilbild-Kapsel.
+- **Typen:** Jagdgebiete mit Pokéradar-Ketten, Tageszeiten wie auf dem DS, Typ-Tagesquest, Raids und Arenen mit Original-Typtabelle, Konter-Vorschläge.
+- **Trainer:** 8 Sinnoh-Arenen mit Top Vier und Champ Cynthia, 30 Orden, Raids, Tagesquests, Eier, Pension, Forschung mit Regionen, Wochen-Liga mit Rivalen, Pokédex, Profil und Profilbilder.
+- **Shop:** Beerenbeete in Flori, Linien freischalten, Exemplare adoptieren, Beeren, Knursp-Bäckerei, Wunder-Tausch, Profilbild-Kapsel.
 - **Mehr:** PokéRadio (ein Player, Senderliste, Atmosphäre-Kacheln), Tagesziel, Erscheinungsbild, strenger Modus, Fokus-Tags, Sync.
-- Offline nutzbar nach dem ersten Öffnen.
+- Offline nutzbar nach dem ersten Öffnen. Unter Mehr › Einstellungen lassen sich alle 1025 DS-Sprites speichern.
 
 Nur am Mac: Apps und Websites sperren (Fokus-Wächter), Mini-HUD, Menüleiste. In der Web-App ersetzt der strenge Modus den Fokus-Wächter: Wer die App länger als 15 Sekunden verlässt, beendet die Runde.
 

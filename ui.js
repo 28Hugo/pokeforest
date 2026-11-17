@@ -131,6 +131,7 @@ export function pokemonSheet(id) {
   const home = G.habitatOf(state, id);
   const where = inTeam ? (id === state.selectedPokemonID ? 'Trainingspartner im Team' : 'Im Team')
     : home ? `Wohnt ${home.locative}`
+    : G.inPension(state, id) ? 'In der Pension Trostu' 
     : trip ? `Auf Expedition: ${G.EXPEDITIONS[trip.kind].title} (${trip.progressMinutes}/${G.EXPEDITIONS[trip.kind].goal} Min)` : `Im PC, ${state.pcBoxes[G.boxOf(state, id)]?.name ?? ''}`;
   let actions = '';
   if (!trip && id !== state.selectedPokemonID) actions += `<button class="pill" data-action="partner" data-id="${id}" ${running ? 'disabled' : ''}>Als Trainingspartner wählen</button>`;
@@ -143,6 +144,8 @@ export function pokemonSheet(id) {
           return `<button data-action="swap" data-id="${id}" data-with="${m}" aria-label="Tauschen mit ${esc(md.name)}"><img src="${pixel(md.spriteID)}" alt=""><span>Lv.${md.level}</span></button>`;
         }).join('')}</div>`
       : `<button class="pill quiet" data-action="to-team" data-id="${id}">Ins Team holen</button>`;
+    if (G.inPension(state, id)) actions += `<button class="pill quiet" data-action="pension-leave" data-id="${id}">Aus der Pension abholen</button>`;
+    else if (!G.pensionProblem(state, id, running)) actions += `<button class="pill quiet" data-action="pension-add" data-id="${id}">In die Pension Trostu geben</button>`;
     if (home) actions += `<button class="pill quiet" data-action="habitat-leave" data-id="${id}">Zurück in den PC</button>`;
     else { const fit = G.suggestedHabitat(state, id); if (fit) actions += `<button class="pill quiet" data-action="habitat-quick" data-id="${id}" data-habitat="${fit.id}">Einziehen lassen: ${esc(fit.name)}</button>`; }
     if ((state.expeditions || []).length < G.MAX_EXPEDITIONS) {

@@ -31,10 +31,27 @@ function renderLines(body) {
       </div>`; }).join('')}</div>`;
 }
 
+const PLANT_ART = ['', '🌱', '🌿', '🌸'];
+function berryPlots(s) {
+  const P = G.C.journey.berryPlots;
+  const plots = G.ensureJourney(s).berryPlots;
+  const inv = s.berryInventory || {};
+  return `<div class="panel berry-beds"><h3>Beerenbeete in Flori</h3>
+    <p class="small muted">Pflanze eine Beere aus deinem Beutel. Sie wächst mit jeder Fokus-Minute und ist nach ${P.growMinutes} Minuten reif. Bei der Ernte bekommst du ${P.harvestMin} bis ${P.harvestMax} Beeren.</p>
+    <div class="beds">${plots.map((plot, i) => { const stage = G.plotStage(plot); const b = G.C.berries.find((x) => x.id === plot.berryID);
+      return `<div class="bed stage${stage}">
+        <div class="soil">${stage === 4 ? `<span class="ripe" style="--c:${b.colorHex}">●●●</span>` : `<span>${PLANT_ART[stage]}</span>`}</div>
+        <small>${b ? `${esc(b.name)} · ${G.STAGE_NAMES[stage]}` : 'Leeres Beet'}</small>
+        ${b && stage < 4 ? `<div class="bar-mini"><i style="width:${Math.round(G.plotProgress(plot) * 100)}%;background:${b.colorHex}"></i></div><small class="muted">${Math.max(0, P.growMinutes - plot.minutes)} Min</small>`
+          : stage === 4 ? `<button class="pill small" data-action="harvest" data-index="${i}">Ernten</button>`
+          : `<select data-action="plant" data-index="${i}" aria-label="Beere für Beet ${i + 1}"><option value="">Pflanzen …</option>${G.C.berries.map((x) => `<option value="${x.id}" ${inv[x.id] ? '' : 'disabled'}>${esc(x.name)} (${inv[x.id] || 0})</option>`).join('')}</select>`}
+      </div>`; }).join('')}</div></div>`;
+}
 function renderItems(body) {
   const s = app.state;
   const inv = s.berryInventory || {};
   body.innerHTML = `
+    ${berryPlots(s)}
     <h3>Beeren</h3>
     <div class="stack">${G.C.berries.map((b) => `<div class="panel item-row"><span class="dot big" style="background:${b.colorHex}"></span>
       <div><strong>${esc(b.name)}</strong> <span class="small muted">× ${inv[b.id] || 0}</span><p class="small muted">${esc(b.effect)}</p></div>
@@ -65,6 +82,7 @@ export function handle(action, el) {
       return true;
     }
     case 'adopt-line': { const x = species(); if (x && G.adoptCopy(s, x)) { save(); toast('Neues Exemplar auf Level 1 – im Team oder PC.'); } else toast('Dafür fehlen dir PokéMünzen.'); app.render(); return true; }
+    case 'harvest': { const n = G.harvestPlot(s, Number(el.dataset.index)); if (n) { save(); toast(`+${n} Beeren geerntet.`); } app.render(); return true; }
     case 'buy-berry': if (G.buyBerry(s, el.dataset.id)) { save(); toast(`${G.berryName(el.dataset.id)} gekauft.`); } app.render(); return true;
     case 'wonder': if (confirm(`${G.WONDER_TRADE_PRICE} Münzen für einen Wunder-Tausch einsetzen?`)) { const msg = G.wonderTrade(s); save(); openSheet(`<h2>Wunder-Tausch</h2><p>${esc(msg)}</p><button class="pill" data-action="close">Super</button>`); app.render(); } return true;
     case 'capsule': if (confirm(`${G.AVATAR_CAPSULE_PRICE} Münzen für eine Profilbild-Kapsel einsetzen?`)) { const msg = G.avatarCapsule(s); save(); toast(msg); app.render(); } return true;
@@ -76,5 +94,11 @@ export function input(el) {
   app.meta.shopSearch = el.value; saveMeta();
   const pos = el.selectionStart; app.render();
   const again = document.querySelector('[data-action="shop-search"]'); again?.focus(); again?.setSelectionRange(pos, pos);
+  return true;
+}
+export function change(el) {
+  if (el.dataset.action !== 'plant' || !el.value) return false;
+  if (G.plantBerry(app.state, el.value, Number(el.dataset.index))) { save(); toast(`${G.berryName(el.value)} gepflanzt.`); }
+  app.render();
   return true;
 }

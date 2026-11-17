@@ -555,3 +555,97 @@ img { image-rendering: pixelated; }
 .ambience { grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); }
 .ambience-tile { min-width: 0; }
 .ambience-tile input { width: 100%; min-width: 0; }
+
+/* 5.6 · Pokétch apps */
+.lcd-hearts { font-size: 1.7rem; letter-spacing: 0.08em; line-height: 1; }
+.lcd-cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; font-size: 0.62rem; text-align: center; }
+.lcd-cal b { font-weight: 800; }
+.lcd-cal i { display: block; font-style: normal; background: #98C088; padding: 1px 0; }
+.lcd-cal i.on { background: #2E4A2A; color: #A8D098; }
+.lcd-cal i.today { outline: 2px solid #2E4A2A; }
+.lcd-clock { width: 110px; height: 110px; stroke: #2E4A2A; fill: #2E4A2A; stroke-linecap: round; }
+.lcd-clock circle[fill="none"] { fill: none; }
+
+/* EP bar in the round summary */
+.xp-gain { display: grid; gap: 6px; padding: 10px 12px; margin: 8px 0; border-radius: var(--radius-s); background: rgba(64, 168, 248, 0.1); }
+.xp-track { height: 10px; border-radius: 99px; background: var(--line); overflow: hidden; }
+.xp-track i { display: block; height: 100%; background: linear-gradient(90deg, #40A8F8, #1878D8); border-radius: 99px; }
+.xp-levelup { margin: 0; font: 800 1.15rem var(--display); color: var(--sun); animation: pop 0.45s ease-out; }
+@keyframes pop { 0% { transform: scale(0.4); opacity: 0; } 70% { transform: scale(1.12); } 100% { transform: scale(1); opacity: 1; } }
+
+/* Habitats: DS idle bob, shiny sparkle, time of day, outbreak */
+.habitat-mon.bob0 img { animation: bob 0.9s steps(2) infinite; }
+.habitat-mon.bob1 img { animation: bob 0.9s steps(2) infinite 0.45s; }
+@keyframes bob { from { transform: translateY(-2%); } to { transform: translateY(0); } }
+.habitat-mon .sparkle { position: absolute; top: 4%; right: 8%; color: #FFE45C; text-shadow: 0 0 3px #fff; animation: twinkle 0.9s steps(2) infinite; }
+@keyframes twinkle { from { opacity: 1; } to { opacity: 0.25; } }
+.habitat-scene::after { content: ""; position: absolute; inset: 0; pointer-events: none; mix-blend-mode: multiply; }
+.habitat-scene.time-morning::after { background: rgba(255, 176, 112, 0.14); }
+.habitat-scene.time-night::after { background: rgba(28, 40, 96, 0.42); }
+.outbreak-sign { position: absolute; top: 6px; right: 6px; z-index: 2; display: flex; align-items: center; gap: 4px; padding: 2px 10px 2px 4px; border-radius: 99px;
+  background: #F8F0D8; border: 2px solid #9A6A38; color: #3A2A18; font: 800 0.72rem var(--display); }
+.outbreak-sign img { width: 26px; height: 26px; image-rendering: pixelated; }
+
+/* Untergrund: shake and cracks */
+.dig-wall.shake { animation: shake 0.18s linear; }
+@keyframes shake { 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
+.dig-wall::after { content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: 10px; opacity: 0; background-repeat: no-repeat;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 130 100' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='%23000' stroke-opacity='.55' stroke-width='1.6'%3E%3Cpath d='M12 0l-5 14 7 12-4 16 6 14'/%3E%3Cpath d='M48 0l6 12-7 14 5 20-6 18 4 14'/%3E%3Cpath d='M86 0l-6 16 8 10-5 18 7 22'/%3E%3Cpath d='M118 0l5 14-7 16 6 18-4 20'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 100% 100%; clip-path: inset(0 0 100% 0); transition: clip-path 0.3s, opacity 0.3s; }
+.dig-wall.cracks-1::after { opacity: 1; clip-path: inset(0 0 78% 0); }
+.dig-wall.cracks-2::after { opacity: 1; clip-path: inset(0 0 55% 0); }
+.dig-wall.cracks-3::after { opacity: 1; clip-path: inset(0 0 30% 0); }
+.dig-wall.cracks-4::after { opacity: 1; clip-path: inset(0 0 0 0); }
+
+/* Pension Trostu */
+.pension { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 10px 0; }
+.pension-slot { display: grid; justify-items: center; gap: 2px; padding: 12px 8px; border-radius: var(--radius-m); background: var(--surface); border: 1px solid var(--line); color: var(--ink); font: inherit; }
+.pension-slot img { width: 80px; height: 80px; image-rendering: pixelated; }
+.pension-slot.empty { border-style: dashed; color: var(--ink-soft); cursor: pointer; min-height: 140px; align-content: center; }
+.pension-slot.empty span { font-size: 1.8rem; }
+.egg-panel { display: flex; gap: 14px; align-items: center; }
+.egg-panel > div:last-child { flex: 1; min-width: 0; }
+.egg-panel .egg { flex: none; width: 52px; height: 64px; border-radius: 50% 50% 46% 46% / 58% 58% 42% 42%; border: 2px solid #5A5A4A;
+  background: radial-gradient(circle at 30% 28%, #7CC07A 0 7px, transparent 8px), radial-gradient(circle at 70% 52%, #7CC07A 0 5px, transparent 6px),
+    radial-gradient(circle at 42% 78%, #7CC07A 0 6px, transparent 7px), #F4F0DC;
+  transform-origin: 50% 100%; animation: wobble var(--speed) ease-in-out infinite alternate; }
+@keyframes wobble { from { transform: rotate(calc(var(--wobble) * -1)); } to { transform: rotate(var(--wobble)); } }
+.badge.pension { background: rgba(235, 133, 199, 0.2); color: #C44D99; right: 6px; left: auto; top: auto; bottom: 22px; }
+
+/* Arenen */
+.badge-case { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; padding: 12px; border-radius: var(--radius-m); background: linear-gradient(#5A3A6E, #3A2448); margin: 10px 0 4px; }
+.case-slot { display: grid; justify-items: center; gap: 3px; color: rgba(255, 255, 255, 0.35); }
+.case-slot span { display: grid; place-items: center; width: 100%; max-width: 40px; aspect-ratio: 1; border-radius: 50%; background: rgba(255, 255, 255, 0.08); font-size: 1rem; }
+.case-slot small { font-size: 0.56rem; text-align: center; line-height: 1.1; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.case-slot.won { color: #fff; }
+.case-slot.won span { background: var(--accent); box-shadow: 0 0 8px var(--accent); border: 2px solid rgba(255, 255, 255, 0.6); }
+.gym-card { display: grid; grid-template-columns: 128px 1fr; gap: 14px; align-items: start; border-left: 6px solid var(--accent); }
+.gym-ace { display: grid; place-items: end center; aspect-ratio: 1; border-radius: var(--radius-m); background: radial-gradient(ellipse 60% 14% at 50% 88%, rgba(0, 0, 0, 0.2), transparent), color-mix(in srgb, var(--accent) 25%, transparent); }
+.gym-ace img { width: 100%; image-rendering: pixelated; }
+.gym-card h3 { margin: 0; }
+.gym-card .quote { margin: 0; font-style: italic; }
+@media (max-width: 520px) { .gym-card { grid-template-columns: 1fr; } .gym-ace { max-width: 160px; } }
+.league-row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; text-align: center; }
+.league-row div { display: grid; justify-items: center; font-size: 0.75rem; }
+.league-row img { width: 100%; max-width: 64px; image-rendering: pixelated; }
+.league-row .locked img { filter: grayscale(1); opacity: 0.6; }
+.league-row .won img { opacity: 0.55; }
+.league-row .won strong::after { content: " ✓"; color: #2E9A5C; }
+.league-row small { color: var(--ink-soft); }
+.prof { background: #F8F0D8; color: #3A2A18; border: 3px solid #9A6A38; }
+.prof h3 { margin: 2px 0; }
+.prof p { margin: 0; }
+.prof small { color: #7A5A38; }
+
+/* Beerenbeete */
+.beds { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.bed { display: grid; justify-items: center; gap: 4px; text-align: center; min-width: 0; }
+.bed small { font-size: 0.7rem; overflow-wrap: anywhere; }
+.bed select { width: 100%; font-size: 0.75rem; }
+.soil { width: 100%; max-width: 92px; aspect-ratio: 1; border-radius: 10px; display: grid; place-items: end center; padding-bottom: 14%; font-size: 1.8rem;
+  background: linear-gradient(180deg, #8A5A34 0 70%, #6E4426 70%); }
+.bed.stage1 .soil span { font-size: 1.1rem; }
+.soil .ripe { color: var(--c); font-size: 1.1rem; letter-spacing: -0.1em; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35); }
+.bar-mini { width: 100%; height: 5px; border-radius: 99px; background: var(--line); overflow: hidden; }
+.bar-mini i { display: block; height: 100%; }
+@media (max-width: 420px) { .beds { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
