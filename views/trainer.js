@@ -1,6 +1,6 @@
 // Trainer & Raids: badges, gyms, raids, quests, eggs, research, league, Pokédex and profile.
 import * as G from '../game.js';
-import { app, $, esc, art, pixel, ds, jingle, typeBadges, num, bar, segmented, sub, save, saveMeta, toast, openSheet, closeSheet } from '../ui.js';
+import { app, $, esc, art, pixel, ds, jingle, typeBadges, num, bar, segmented, sub, pills, info, save, saveMeta, toast, openSheet, closeSheet } from '../ui.js';
 
 export function render(view) {
   const s = app.state;
@@ -10,6 +10,8 @@ export function render(view) {
   const avatar = G.currentAvatar(s);
   const progress = (xp - G.trainerThreshold(level)) / Math.max(1, G.trainerThreshold(level + 1) - G.trainerThreshold(level));
   const streak = G.streakDays(s);
+  const current = sub('trainer', 'gyms');
+  const group = G.trainerGroupOf(current);
   view.innerHTML = `
     <div class="panel trainer-head">
       <img src="${art(avatar.pokedexID, avatar.isShiny)}" alt="" style="background:${avatar.colorHex}33">
@@ -17,10 +19,12 @@ export function render(view) {
         <p class="small" style="color:${rank.colorHex}">Lv. ${level} · ${rank.badgeEmoji} ${esc(rank.title)}${streak ? ` · ${streak} ${streak === 1 ? 'Tag' : 'Tage'} Serie` : ''}</p>
         ${bar(progress, rank.colorHex)}<p class="small muted">${num(G.trainerThreshold(level + 1) - xp)} XP bis zum nächsten Level</p></div>
     </div>
-    ${segmented('trainer', [['badges', 'Orden'], ['gyms', 'Arenen'], ['zone', `Kampfzone${G.readyWeeklyCount(s) ? ` (${G.readyWeeklyCount(s)})` : ''}`], ['contest', 'Wettbewerb'], ['raids', 'Raids & Quests'], ['research', 'Forschung'], ['league', 'Liga & Pokédex'], ['profile', 'Profil']])}
+    <div class="segmented" role="tablist">${G.TRAINER_GROUPS.map((g) => { const ready = g.id === 'battles' ? G.readyWeeklyCount(s) : 0;
+      return `<button role="tab" data-action="sub" data-key="trainer" data-value="${g.subs[0][0]}" aria-selected="${g.id === group.id}">${esc(g.title)}${ready ? ` (${ready})` : ''}</button>`; }).join('')}</div>
+    ${pills('trainer', group.subs, current)}
     <div id="trainer-body"></div>`;
   const body = $('#trainer-body', view);
-  ({ badges: renderBadges, gyms: renderGyms, zone: renderZone, contest: renderContest, raids: renderRaids, research: renderResearch, league: renderLeague, profile: renderProfile })[sub('trainer', 'badges')](body);
+  ({ badges: renderBadges, gyms: renderGyms, zone: renderZone, contest: renderContest, raids: renderRaids, research: renderResearch, league: renderLeague, profile: renderProfile })[current](body);
 }
 
 function renderBadges(body) {
@@ -67,12 +71,11 @@ function renderGyms(body) {
       </div></div>`;
   }
   body.innerHTML = `
-    <p class="small muted">Fordere einen Arenaleiter heraus. Jede Trainingsrunde mit deinem eigenen Partner zieht seinem Pokémon KP ab: 1 KP pro Minute, mit Typvorteil doppelt so viel.</p>
+    <h3>Arenen in Sinnoh${info('Fordere einen Arenaleiter heraus. Jede Trainingsrunde mit deinem eigenen Partner zieht seinem Pokémon KP ab: 1 KP pro Minute, mit Typvorteil doppelt so viel.')}</h3>
     <div class="badge-case">${G.gyms().map((g) => `<div class="case-slot ${G.isDefeated(s, g) ? 'won' : ''}" style="--accent:${g.colorHex}" title="${esc(g.badgeName)} · ${esc(g.leader)}, ${esc(g.place)}"><span>${BADGE_ICON[g.id] ?? '★'}</span><small>${esc(g.badgeName)}</small></div>`).join('')}</div>
     <p class="small muted">${G.gymBadgeCount(s)} / 8 Orden</p>
     ${card}
-    ${rivalCard(s)}
-    ${spearCard(s)}
+    <div class="duo">${rivalCard(s)}${spearCard(s)}</div>
     <h3>Pokémon-Liga ${s.journey?.gyms?.leagueRematches ? `<span class="small muted">Revanche ${s.journey.gyms.leagueRematches}</span>` : ''}</h3>
     <div class="league-row">${G.league().map((l) => `<div class="${G.isDefeated(s, l) ? 'won' : G.challengeAvailable(s, l) ? 'open' : 'locked'}"><img src="${ds(l.aceDexID)}" alt=""><strong>${esc(l.leader)}</strong><small>${esc(l.title)}</small></div>`).join('')}</div>`;
 }
@@ -147,18 +150,17 @@ function rivalCard(s) {
   const r = G.rival(s); const ace = G.rivalAce(s); const p = G.findPokemon(s, s.selectedPokemonID);
   const m = p ? G.raidMatchup(G.pokemonTypes(p), G.typesOf(ace)) : 'neutral';
   const max = G.rivalMaxHP(s);
-  return `<div class="panel rival"><img src="${ds(ace)}" alt=""><div class="stack">
-    <h3>Rivale ${esc(G.C.life.rival.name)} · diese Woche</h3><p class="quote">„${esc(G.C.life.rival.quote)}“</p>
-    <p class="small"><strong>${esc(G.pokemonName(ace))}</strong> ${typeBadges(G.typesOf(ace), true)}</p>
-    ${r.beaten ? '<p class="small note-share">✓ Diese Woche besiegt. Nächste Woche fordert er dich wieder heraus.</p>'
-      : `${bar((max - r.damage) / max, '#E8920E')}<p class="small muted">${max - r.damage} / ${max} KP · ${p ? `${esc(G.describe(p).name)}: ${G.SHORT_MATCHUP[m]}` : ''} · Sieg: ${G.rivalReward(s)} Münzen + ${G.C.life.rival.rewardPoints} KP</p>
-        <button class="pill ${r.active ? 'quiet' : ''}" data-action="${r.active ? 'rival-leave' : 'rival-start'}" ${app.session ? 'disabled' : ''}>${r.active ? 'Kampf verlassen' : 'Kampf annehmen'}</button>`}</div></div>`;
+  return `<div class="panel rival compact"><img src="${ds(ace)}" alt=""><div class="stack">
+    <div class="row"><h3>Rivale ${esc(G.C.life.rival.name)}${info(`„${G.C.life.rival.quote}“ Barry fordert dich jede Woche heraus. Nimm den Kampf an, dann zieht jede Trainingsrunde ihm KP ab. Sieg: ${G.rivalReward(s)} Münzen + ${G.C.life.rival.rewardPoints} Kampfpunkte.`)}</h3>${typeBadges(G.typesOf(ace), true)}</div>
+    ${r.beaten ? '<p class="small note-share">✓ Diese Woche besiegt</p>'
+      : `${bar((max - r.damage) / max, '#E8920E')}<div class="row"><span class="small muted">${max - r.damage} / ${max} KP${p ? ` · ${esc(G.describe(p).name)}: ${G.SHORT_MATCHUP[m]}` : ''}</span>
+        <button class="pill small ${r.active ? 'quiet' : ''}" data-action="${r.active ? 'rival-leave' : 'rival-start'}" ${app.session ? 'disabled' : ''}>${r.active ? 'Verlassen' : 'Annehmen'}</button></div>`}</div></div>`;
 }
 function spearCard(s) {
   if (!G.spearOpen(s)) return '';
   const sp = G.ensureJourney(s).spear;
   const met = (id) => s.pokemonRoster.some((p) => p.species.stages.some((st) => st.pokedexID === id));
-  return `<div class="panel spear"><div class="row">${[483, 484, 487].map((id) => `<img src="${ds(id)}" alt="" style="${met(id) ? '' : 'filter:grayscale(1);opacity:.5'}">`).join('')}</div>
+  return `<div class="panel spear compact"><div class="row">${[483, 484, 487].map((id) => `<img src="${ds(id)}" alt="" style="${met(id) ? '' : 'filter:grayscale(1);opacity:.5'}">`).join('')}</div>
     <h3>Speersäule</h3><p class="small">${esc(G.spearText(s))}</p>
     ${sp.step >= 3 ? '' : !sp.version ? `<div class="row"><button class="pill" data-action="spear" data-version="diamant">Diamant-Weg: Dialga</button><button class="pill" data-action="spear" data-version="perl">Perl-Weg: Palkia</button></div>`
       : sp.active ? `<p class="small note-share">Aktiv: Runden ab ${G.C.life.spear.minMinutes} Min zählen.</p>` : `<button class="pill" data-action="spear" data-version="${sp.version}">Zur Speersäule</button>`}</div>`;

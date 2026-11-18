@@ -1,14 +1,18 @@
 // Safari: Sinnoh habitats, Team & PC, statistics and logbook.
 import * as G from '../game.js';
-import { app, $, esc, art, pixel, ds, typeBadges, duration, num, bar, segmented, sub, save, saveMeta, toast, openSheet, closeSheet, pokemonSheet, queueEvolutions, playEvolutions } from '../ui.js';
+import { app, $, esc, art, pixel, ds, typeBadges, duration, num, bar, segmented, sub, pills, pageHead, info, save, saveMeta, toast, openSheet, closeSheet, pokemonSheet, queueEvolutions, playEvolutions } from '../ui.js';
 
 export function render(view) {
-  const section = sub('safari', 'meadow');
-  view.innerHTML = `<div class="row"><h2>Safari</h2><span class="muted small">${app.state.pokemonRoster.length} Begleiter</span></div>
-    ${segmented('safari', [['meadow', 'Lebensräume'], ['pension', `Pension${app.state.journey?.pension?.egg ? ' 🥚' : ''}`], ['team', 'Team & PC'], ['dig', `Untergrund${(app.state.undergroundCharges ?? 1) > 0 ? ` (${app.state.undergroundCharges ?? 1})` : ''}`], ['stats', 'Statistik'], ['log', 'Logbuch']])}
+  let section = sub('safari', 'meadow');
+  if (section === 'stats' || section === 'log') { app.meta.sub.chronik = section; section = 'chronik'; app.meta.sub.safari = 'chronik'; }
+  const s = app.state;
+  const residents = Object.values(s.habitatResidents || {}).reduce((a, ids) => a + ids.length, 0);
+  view.innerHTML = `${pageHead('Safari', `${s.pokemonRoster.length} Begleiter · ${residents} wohnen in Lebensräumen`)}
+    ${segmented('safari', [['meadow', 'Lebensräume'], ['pension', `Pension${s.journey?.pension?.egg ? ' 🥚' : ''}`], ['team', 'Team & PC'], ['dig', `Untergrund${(s.undergroundCharges ?? 1) > 0 ? ` (${s.undergroundCharges ?? 1})` : ''}`], ['chronik', 'Chronik']])}
     <div id="safari-body"></div>`;
   const body = $('#safari-body', view);
-  ({ meadow: renderHabitats, pension: renderPension, team: renderTeam, dig: renderDig, stats: renderStats, log: renderLog })[section](body);
+  const chronik = (b) => { b.innerHTML = `${pills('chronik', [['stats', 'Kalender'], ['log', 'Logbuch']])}<div id="chronik-body"></div>`; (sub('chronik', 'stats') === 'log' ? renderLog : renderStats)($('#chronik-body', b)); };
+  ({ meadow: renderHabitats, pension: renderPension, team: renderTeam, dig: renderDig, chronik })[section](body);
 }
 
 // MARK: Lebensräume (Sinnoh habitats with DS battle backdrops)
@@ -38,13 +42,15 @@ function renderHabitats(body) {
   const invasion = G.galacticInvasion(s);
   const pickups = G.pickupReady(s);
   body.innerHTML = `
-    ${invasion ? `<div class="panel galactic"><strong>⚠️ Team Galaktik besetzt ${esc(invasion.name)}!</strong><p class="small muted">Die Bewohner verstecken sich und trainieren nicht. ${G.galacticProgress(s)} / ${G.C.life.galactic.goalMinutes} Min Jagd oder Training mit passendem Typ vertreiben die Bande.</p></div>` : ''}
+    ${invasion ? `<div class="panel galactic"><strong>⚠️ Team Galaktik besetzt ${esc(invasion.name)}!</strong><p class="small muted">${G.galacticProgress(s)} / ${G.C.life.galactic.goalMinutes} Min Jagd oder Training mit passendem Typ vertreiben die Bande.</p></div>` : ''}
+    <div class="row"><h3>Lebensräume in Sinnoh${info(`Lass PC-Pokémon an Orten wohnen, die zu ihrem Typ passen. Sie trainieren bei jeder Runde mit. Ein voller Lebensraum gibt seinen Bewohnern als Partner +${H.fullHabitatBonusPercent} % EP. Jeder bewohnte Lebensraum bringt einmal am Tag ein Fundstück.`)}</h3><span class="small muted">${total} Bewohner · ${fullCount}/${H.places.length} voll</span></div>
     ${pickups ? `<button class="pill wide" data-action="pickup">🎁 Fundstücke abholen (${pickups})</button>` : ''}
-    <p class="small muted">Lass PC-Pokémon an Orten wohnen, die zu ihrem Typ passen. Sie trainieren bei jeder Runde mit. · ${total} Bewohner · ${fullCount}/${H.places.length} voll</p>
-    <div class="habitat-chips" role="tablist" aria-label="Lebensräume">${H.places.map((x) => { const ok = G.habitatUnlocked(s, x); const n = G.residentIDs(s, x).length;
+    ${(() => { const layout = G.habitatLayout(s, h.id, !!app.meta.allHabitats);
+      return `<div class="habitat-chips grid" role="tablist" aria-label="Lebensräume">${layout.shown.map((x) => { const ok = G.habitatUnlocked(s, x); const n = G.residentIDs(s, x).length;
       return `<button role="tab" class="habitat-chip ${x.id === h.id ? 'on' : ''} ${ok ? '' : 'locked'}" aria-selected="${x.id === h.id}" data-action="habitat-pick" data-id="${x.id}">
         <img src="img/habitats/${x.id}.png" alt=""><span><strong>${esc(x.name)}</strong><small>${ok ? `${n}/${H.capacity}${n >= H.capacity ? ' ★' : ''}` : `ab ${num(x.requiredMinutes)} Min 🔒`}</small>
-        <i>${x.types.map((t) => `<b style="background:${G.typeInfo(t).colorHex}"></b>`).join('')}</i></span></button>`; }).join('')}</div>
+        <i>${x.types.map((t) => `<b style="background:${G.typeInfo(t).colorHex}"></b>`).join('')}</i></span></button>`; }).join('')}
+        ${layout.hidden || app.meta.allHabitats ? `<button class="habitat-chip more" data-action="habitats-all">${app.meta.allHabitats ? 'Weniger zeigen' : `🔒 ${layout.hidden} weitere freischaltbar`}</button>` : ''}</div>`; })()}
     <div class="habitat-scene ${open ? '' : 'locked'} time-${G.dayTime().id}">
       <img class="backdrop" src="img/habitats/${h.id}.png" alt="">
       <div class="place-sign"><strong>${esc(h.name)}</strong><small>${esc(h.place)}</small></div>
@@ -112,7 +118,7 @@ function renderPension(body) {
   const parents = G.pensionParents(s);
   const egg = j.pension.egg;
   body.innerHTML = `
-    <p class="small muted">Gib zwei Pokémon ab. Nach ${P.eggMinutes} Fokus-Minuten findet das Paar ein Ei, nach weiteren ${P.hatchMinutes} Minuten schlüpft ein Pokémon in der Grundform.${j.pension.hatchedCount ? ` · ${j.pension.hatchedCount} geschlüpft` : ''}</p>
+    <div class="row"><h3>Pension Trostu${info(`Gib zwei Pokémon ab. Nach ${P.eggMinutes} Fokus-Minuten findet das Paar ein Ei, nach weiteren ${P.hatchMinutes} Minuten schlüpft ein Pokémon in der Grundform.`)}</h3>${j.pension.hatchedCount ? `<span class="small muted">${j.pension.hatchedCount} geschlüpft</span>` : ''}</div>
     <div class="pension">
       ${Array.from({ length: P.capacity }, (_, i) => parents[i]).map((p) => { if (!p) return '<button class="pension-slot empty" data-action="pension-pick"><span>＋</span>Pokémon abgeben</button>';
         const d = G.describe(p); return `<div class="pension-slot"><img src="${ds(d.spriteID, p.isShiny)}" alt=""><strong>${esc(d.name)}</strong><small>Lv. ${d.level}</small>
@@ -168,32 +174,41 @@ function renderDig(body) {
     content = `${r ? `<div class="panel"><h3>${r.collapsed ? 'Die Wand ist eingestürzt!' : 'Grabung beendet'}</h3><p>${esc(G.digSummary(r))}</p>${r.fossils.length ? '<p class="small muted">Deine Fossil-Pokémon warten im PC.</p>' : ''}</div>` : ''}
       <button class="pill wide" data-action="dig-start" ${charges > 0 ? '' : 'disabled'}>${charges > 0 ? 'Grabung starten' : `Noch ${G.minutesToNextDig(s)} Fokus-Minuten bis zur nächsten Grabung`}</button>`;
   }
+  const part = sub('dig', 'dig');
   body.innerHTML = `
-    <p class="small muted">Pro ${U.minutesPerDig} Fokus-Minuten bekommst du eine Grabung. Leg Kugeln, Herzschuppen und Fossilien frei, bevor die Wand einstürzt.</p>
+    <div class="row">${pills('dig', [['dig', 'Graben'], ['base', 'Geheimbasis']])}${info(`Pro ${U.minutesPerDig} Fokus-Minuten bekommst du eine Grabung. Leg Schätze frei, bevor die Wand einstürzt. Kleine Kugel +10 Münzen · Große Kugel +30 · Herzschuppe: eine Beere · Entwicklungssteine landen im Beutel · Fossilien erwachen als Koknodon, Schilterus, Amonitas, Kabuto, Anorith, Liliep oder Aerodactyl.`)}</div>
+    ${part === 'base' ? secretBase(s) : `
     <div class="row"><strong>⛏ ${charges} / ${U.maxCharges} Grabungen bereit</strong>${charges < U.maxCharges ? `<span class="small muted">nächste in ${G.minutesToNextDig(s)} Min</span>` : ''}</div>
-    ${charges < U.maxCharges ? `<button class="pill quiet" data-action="buy-dig" ${G.canBuyDig(s) ? '' : 'disabled'}>+1 Grabung für ${G.C.zone.extra.extraDigPrice} Münzen (1× am Tag)</button>` : ''}
-    ${content}
-    ${secretBase(s)}
-    <p class="small muted">Kleine Kugel +10 Münzen · Große Kugel +30 · Herzschuppe: eine Beere · Entwicklungssteine landen im Beutel · Fossilien erwachen als Koknodon, Schilterus, Amonitas, Kabuto, Anorith, Liliep oder Aerodactyl.</p>`;
+    ${charges < U.maxCharges && !wall ? `<button class="pill quiet" data-action="buy-dig" ${G.canBuyDig(s) ? '' : 'disabled'}>+1 Grabung für ${G.C.zone.extra.extraDigPrice} Münzen (1× am Tag)</button>` : ''}
+    ${content}`}`;
 }
 
 function secretBase(s) {
   const L = G.C.life; const b = G.ensureJourney(s).base;
-  const owned = Object.keys(b.owned).filter((id) => id.startsWith('puppe-'));
   const art = (item) => (item?.dex ? `<img src="${ds(item.dex)}" alt="">` : `<span class="decor" style="--c:${item?.colorHex}">${DECOR_ICON[item?.id] ?? '■'}</span>`);
   const cells = [];
   for (let y = 0; y < L.baseRows; y++) for (let x = 0; x < L.baseColumns; x++) {
     const placed = b.placed.find((p) => p.x === x && p.y === y);
     cells.push(`<button class="base-cell" data-action="base-cell" data-x="${x}" data-y="${y}" aria-label="${placed ? esc(G.decorItem(placed.item)?.name) : 'Freies Feld'}">${placed ? art(G.decorItem(placed.item)) : ''}</button>`);
   }
-  const chip = (item) => { const free = G.decorAvailable(s, item.id);
-    return `<div class="decor-chip ${app.meta.baseItem === item.id ? 'on' : ''}">${art(item)}<small>${esc(item.name)}</small>
-      ${free > 0 ? `<button class="pill small" data-action="base-pick" data-id="${item.id}">${app.meta.baseItem === item.id ? 'Gewählt' : `Aufstellen (${free})`}</button>` : `<button class="pill quiet small" data-action="base-buy" data-id="${item.id}" ${s.coins < item.price ? 'disabled' : ''}>${item.price} Münzen</button>`}</div>`; };
-  return `<h3>Geheimbasis</h3>
-    <p class="small muted">Kauf Möbel und Puppen und stell sie auf: Teil wählen, dann auf ein freies Feld tippen. Ein Tipp auf ein Teil räumt es weg.</p>
+  const palette = Object.keys(b.owned).map(G.decorItem).filter((item) => item && G.decorAvailable(s, item.id) > 0);
+  const chosen = G.decorItem(app.meta.baseItem);
+  return `<div class="base-layout">
     <div class="base" style="--cols:${L.baseColumns}">${cells.join('')}</div>
-    <div class="decor-row">${[...L.decor, ...owned.map(G.decorItem)].map(chip).join('')}</div>
-    <label class="field">Puppe kaufen (${L.dollPrice} Münzen) <input data-action="doll" placeholder="Name oder Nummer, z. B. Plinfa" aria-label="Puppe kaufen"></label>`;
+    <div class="stack"><h3>Zum Aufstellen</h3>
+      ${palette.length ? `<div class="decor-palette">${palette.map((item) => `<button class="${app.meta.baseItem === item.id ? 'on' : ''}" data-action="base-pick" data-id="${item.id}" title="${esc(item.name)}">${art(item)}<small>${G.decorAvailable(s, item.id)}×</small></button>`).join('')}</div>
+        <p class="small muted">${chosen ? `${esc(chosen.name)}: tippe auf ein freies Feld.` : 'Wähle ein Teil, dann ein Feld.'}</p>`
+        : '<p class="small muted">Alles steht. Kauf neue Möbel oder Puppen.</p>'}
+      <button class="pill quiet" data-action="base-shop">🛒 Möbel &amp; Puppen kaufen</button></div></div>`;
+}
+function baseShop() {
+  const s = app.state; const L = G.C.life;
+  const art = (item) => (item?.dex ? `<img src="${ds(item.dex)}" alt="">` : `<span class="decor" style="--c:${item?.colorHex}">${DECOR_ICON[item?.id] ?? '■'}</span>`);
+  openSheet(`<h2>Einrichten</h2><p class="small muted">${num(s.coins)} PokéMünzen</p>
+    <div class="decor-shop">${L.decor.map((item) => { const owned = G.ensureJourney(s).base.owned[item.id] || 0;
+      return `<div class="decor-chip">${art(item)}<small>${esc(item.name)}${owned ? ` · ${owned}×` : ''}</small><button class="pill quiet small" data-action="base-buy" data-id="${item.id}" ${s.coins < item.price ? 'disabled' : ''}>${item.price} Münzen</button></div>`; }).join('')}</div>
+    <label class="field">Puppe kaufen (${L.dollPrice} Münzen) <input data-action="doll" placeholder="Name oder Nummer, z. B. Plinfa" aria-label="Puppe kaufen"></label>
+    <button class="pill" data-action="close">Fertig</button>`);
 }
 const DECOR_ICON = { pflanze: '🪴', tisch: '🪵', stuhl: '🪑', teppich: '▦', fass: '🛢', ziegel: '🧱', lampe: '💡', pokeball: '◓', flagge: '🚩' };
 
@@ -363,7 +378,9 @@ export function handle(action, el) {
     case 'pc-pick-all': meta.pcPicked = [...s.pcBoxes[meta.boxIndex].pokemonIDs]; saveMeta(); app.render(); return true;
     case 'pc-settle': { const n = G.settleMany(s, meta.pcPicked || []); meta.pcPicked = []; saveMeta(); return done(n > 0, `${n} Pokémon sind eingezogen.`, 'Kein passender freier Lebensraum.'); }
     case 'base-pick': meta.baseItem = el.dataset.id; saveMeta(); app.render(); return true;
-    case 'base-buy': { if (G.buyDecor(s, el.dataset.id)) { meta.baseItem = el.dataset.id; save(); saveMeta(); } else toast('Zu wenig Münzen.'); app.render(); return true; }
+    case 'base-buy': { if (G.buyDecor(s, el.dataset.id)) { meta.baseItem = el.dataset.id; save(); saveMeta(); toast(`${G.decorItem(el.dataset.id)?.name ?? 'Teil'} gekauft.`); } else toast('Zu wenig Münzen.'); app.render(); if (el.closest('dialog')) baseShop(); return true; }
+    case 'base-shop': baseShop(); return true;
+    case 'habitats-all': meta.allHabitats = !meta.allHabitats; saveMeta(); app.render(); return true;
     case 'base-cell': {
       const x = Number(el.dataset.x); const y = Number(el.dataset.y);
       if (G.ensureJourney(s).base.placed.some((p) => p.x === x && p.y === y)) G.removeDecor(s, x, y);
@@ -411,7 +428,7 @@ export function change(el) {
     case 'pc-move': if (el.value !== '') { const n = G.moveMany(s, meta.pcPicked || [], Number(el.value)); meta.pcPicked = []; saveMeta(); save(); toast(`${n} Pokémon verschoben.`); app.render(); } return true;
     case 'wallpaper': G.setWallpaper(s, meta.boxIndex, el.value); save(); app.render(); return true;
     case 'doll': { const q = el.value.trim().toLowerCase(); const n = Number(q) || (G.C.names.findIndex((x) => x.toLowerCase().startsWith(q)) + 1);
-      if (q && n >= 1 && n <= 1025) { if (G.buyDecor(s, `puppe-${n}`)) { meta.baseItem = `puppe-${n}`; save(); saveMeta(); toast(`${G.pokemonName(n)}-Puppe gekauft.`); } else toast('Zu wenig Münzen.'); }
+      if (q && n >= 1 && n <= 1025) { if (G.buyDecor(s, `puppe-${n}`)) { meta.baseItem = `puppe-${n}`; save(); saveMeta(); toast(`${G.pokemonName(n)}-Puppe gekauft.`); closeSheet(); } else toast('Zu wenig Münzen.'); }
       app.render(); return true; }
     case 'sort-box': if (el.value) { G.sortBox(s, meta.boxIndex, el.value); save(); app.render(); } return true;
     case 'log-shiny': meta.logShiny = el.checked; saveMeta(); app.render(); return true;

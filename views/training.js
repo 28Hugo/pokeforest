@@ -1,8 +1,8 @@
 // Training & Gras: own Pokémon or wild encounter, Pomodoro chains, Ewigstein, berries and Knursp.
 import * as G from '../game.js';
-import { app, $, esc, art, pixel, ds, jingle, typeBadges, duration, bar, save, saveMeta, saveSession, toast, openSheet, closeSheet, queueEvolutions, playEvolutions } from '../ui.js';
+import { app, $, esc, art, pixel, ds, jingle, typeBadges, duration, bar, pageHead, todayStrip, info, save, saveMeta, saveSession, toast, openSheet, closeSheet, queueEvolutions, playEvolutions } from '../ui.js';
 
-const PRESETS = [15, 25, 45, 60, 90];
+const PRESETS = G.DURATION_PRESETS;
 const MODE_RAW = { owned: 'Eigenes Pokémon trainieren', wild: 'Wilde Begegnung (Nationaldex)' };
 let ticker = null;
 let hiddenAt = null;
@@ -35,8 +35,6 @@ export function render(view) {
   const coins = G.coinPreview(state, preview);
   const megaReady = mode === 'owned' && d && d.level >= 50 && d.stage === G.stageCount(partner.species) && minutes >= 90 && G.megaFor(partner.species);
   const sprite = mode === 'wild' ? null : (megaReady ? G.megaFor(partner.species).pokedexID : d?.spriteID);
-  const dayID = G.pokemonOfTheDay(state.pokemonRoster);
-  const star = dayID && dayID !== state.selectedPokemonID ? G.findPokemon(state, dayID) : null;
   const tags = state.tags;
   const tag = tags.find((t) => t.id === (running ? s.tagID : app.meta.tagID)) ?? tags[0];
   const share = G.sharedExperience(mode === 'wild' ? minutes * G.EXP_PER_MINUTE : ep.base + ep.bonus);
@@ -46,7 +44,11 @@ export function render(view) {
   const phaseTitle = { idle: '', break: `Erholungspause · Runde ${s?.round}/${s?.pomodoro?.rounds}`, pause: 'Ewigstein-Pause', focus: mode === 'wild' ? 'Etwas raschelt im hohen Gras …' : `${esc(d?.name)} trainiert` }[phase];
   const recent = (state.plantedTrees || []).find((t) => t.survived && !t.wasWildEncounter && G.findPokemon(state, t.pokemonID));
 
+  const today = G.todayMinutes(state); const goal = G.dailyGoal(state);
+  const bonuses = d ? [ep.day && ['☀️', `Pokémon des Tages: +${G.DAY_BONUS_PERCENT} % EP`], ep.naturePct && ['🙂', `Wesen ${G.natureOf(partner).name}: +${ep.naturePct} % EP`], ep.habitat && ['🏡', 'Voller Lebensraum'], state.activeBerryBuff === 'epbeere' && ['⚡', 'EP-Beere: doppelte EP'], state.expShareEnabled && ['🔗', 'EP-Teiler an']].filter(Boolean) : [];
+  const evolvesNow = d?.nextEvolutionName && d.toNextEvolution <= gain;
   view.innerHTML = `
+    ${running ? '' : pageHead('Training', today >= goal ? `Tagesziel erreicht · ${today} Min heute` : `Noch ${goal - today} Min bis zum Tagesziel`, '', todayStrip(state, mode))}
     ${banner ? `<div class="banner ${banner.ok ? '' : 'bad'}"><p>${esc(banner.text)}</p>${banner.recap ? '<button class="link" data-action="recap">Trainingsmoment ansehen</button>' : ''}${banner.recap && !running && lastRound() ? '<button class="link" data-action="again">↻ Gleiche Runde nochmal</button>' : ''}<button class="icon-btn small" data-action="dismiss-banner" aria-label="Hinweis schließen">×</button></div>` : ''}
     ${running ? '' : `
     <div class="mode-switch" role="tablist" aria-label="Trainingsart">
@@ -72,8 +74,9 @@ export function render(view) {
           <p class="small muted">Pomodoro-Kette: ${G.normalizePlan(app.meta.pomodoro).rounds} × ${G.normalizePlan(app.meta.pomodoro).focusMinutes} Min, ${G.normalizePlan(app.meta.pomodoro).breakMinutes} Min Pause</p>` : `
           <div class="durations" role="group" aria-label="Dauer">
             ${PRESETS.map((m) => `<button class="chip" data-action="minutes" data-minutes="${m}" aria-pressed="${m === minutes}">${m} Min</button>`).join('')}
+            <button class="chip" data-action="custom-time" aria-pressed="${G.durationShowsSlider(minutes, app.meta.customTime)}" title="Freie Zeit von 5 bis 180 Minuten">${PRESETS.includes(minutes) ? 'Eigene' : `${minutes} Min`}</button>
           </div>
-          <input type="range" min="5" max="180" step="5" value="${minutes}" id="minutes" aria-label="Dauer in Minuten">`}
+          ${G.durationShowsSlider(minutes, app.meta.customTime) ? `<input type="range" min="5" max="180" step="5" value="${minutes}" id="minutes" aria-label="Dauer in Minuten">` : ''}`}
       </div>
       <div class="side">
         ${mode === 'owned' && d ? `
@@ -82,55 +85,50 @@ export function render(view) {
             <h3>${esc(d.name)} <span class="muted small">Lv. ${d.level}</span></h3>
             ${typeBadges(G.pokemonTypes(partner), true)}
             ${bar(d.progress)}
-            <p class="small muted">${d.maxLevel ? 'Level 100 · Fokus-Champion' : `Diese Runde +${gain} EP → Lv. ${projected.level}. Noch ${d.minutesToNextLevel} Fokus-Min bis Lv. ${d.level + 1}.`}</p>
-            ${d.nextEvolutionName ? `<p class="small ${d.toNextEvolution <= gain ? 'note-sun' : 'muted'}">${d.toNextEvolution <= gain ? `Diese Runde entwickelt es sich zu ${esc(d.nextEvolutionName)}!` : `Entwicklung zu ${esc(d.nextEvolutionName)} in ${duration(d.minutesToNextEvolution)} Fokus`}</p>` : ''}
+            <p class="small muted">${d.maxLevel ? 'Level 100 · Fokus-Champion' : `Diese Runde +${gain} EP → Lv. ${projected.level}`} ${bonuses.map(([icon, text]) => `<span class="bonus" title="${esc(text)}" aria-label="${esc(text)}">${icon}</span>`).join('')}</p>
+            ${evolvesNow ? `<p class="small note-sun">✨ Diese Runde entwickelt es sich zu ${esc(d.nextEvolutionName)}!</p>` : ''}
+          </div></div>
+          <details class="more-info" ${app.meta.partnerDetails ? 'open' : ''}><summary data-action="partner-details">Details</summary>
+            ${d.maxLevel ? '' : `<p class="small muted">Noch ${d.minutesToNextLevel} Fokus-Min bis Lv. ${d.level + 1}.</p>`}
+            ${d.nextEvolutionName && !evolvesNow ? `<p class="small muted">Entwicklung zu ${esc(d.nextEvolutionName)} in ${duration(d.minutesToNextEvolution)} Fokus</p>` : ''}
+            ${(() => { const n = G.natureOf(partner); return `<p class="small muted">Wesen ${esc(n.name)}: ${esc(n.hint)}</p>`; })()}
+            ${bonuses.map(([icon, text]) => `<p class="small note-share">${icon} ${esc(text)}</p>`).join('')}
             ${(() => { const m = G.currentRaidMatchup(state, mode); return m === 'neutral' ? '' : `<p class="small ${m === 'super' ? 'note-share' : 'note-sun'}">Raid: ${G.MATCHUP[m].label}</p>`; })()}
             ${(() => { const c = G.activeChallenge(state); if (!c) return ''; const m = G.gymMatchup(partner, c);
               return `<p class="small ${m === 'super' ? 'note-share' : m === 'weak' ? 'note-sun' : 'muted'}">Arena ${esc(c.leader)}: ${G.gymHPLeft(state)} KP · ${G.SHORT_MATCHUP[m]}</p>`; })()}
-            ${(() => { const n = G.natureOf(partner); return ep.naturePct ? `<p class="small note-share">Wesen ${esc(n.name)}: +${ep.naturePct} % EP</p>` : `<p class="small muted">Wesen ${esc(n.name)}: ${esc(n.hint)}</p>`; })()}
-            ${ep.day ? `<p class="small note-sun">Pokémon des Tages: +${G.DAY_BONUS_PERCENT} % EP</p>` : ''}
-            ${ep.habitat ? `<p class="small note-sun">Voller Lebensraum (${esc(G.partnerHabitatBonus(state, { mode: 'owned' })?.name ?? '')}): +${G.C.habitats.fullHabitatBonusPercent} % EP</p>` : ''}
-            ${state.activeBerryBuff === 'epbeere' ? '<p class="small note-share">EP-Beere: doppelte EP</p>' : ''}
-          </div></div>
-          ${star && !running ? `<button class="pill quiet wide" data-action="partner" data-id="${star.id}">Heute in Topform: ${esc(G.describe(star).name)} wählen</button>` : ''}
-          <div class="mini-team">${others.map((o) => { const od = G.describe(o); const adv = G.bestEffectiveness(G.pokemonTypes(o), G.typesOf(G.activeBoss(state).pokedexID)) >= 2 || (G.activeChallenge(state) && G.gymMatchup(o, G.activeChallenge(state)) === 'super');
-            return `<button data-action="partner" data-id="${o.id}" ${running ? 'disabled' : ''} title="${esc(od.name)} als Partner${adv ? ' · Typvorteil' : ''}"><img src="${pixel(od.spriteID, o.isShiny)}" alt="${esc(od.name)}"><span>${state.expShareEnabled && !od.maxLevel ? `+${share}` : `Lv.${od.level}`}${adv ? ' ×2' : ''}</span></button>`; }).join('')}</div>
-          ${running ? '' : (() => { const types = G.activeChallenge(state) ? G.challengeTypes(G.activeChallenge(state)) : G.typesOf(G.activeBoss(state).pokedexID);
-            const c = G.bestCounter(state, types); return c && c.id !== partner.id ? `<button class="pill quiet wide" data-action="partner" data-id="${c.id}">Konter${G.activeChallenge(state) ? ` gegen ${esc(G.activeChallenge(state).leader)}` : ' für den Raid'}: ${esc(G.describe(c).name)} Lv. ${G.describe(c).level}</button>` : ''; })()}
+            <div class="mini-team">${others.map((o) => { const od = G.describe(o); const adv = G.bestEffectiveness(G.pokemonTypes(o), G.typesOf(G.activeBoss(state).pokedexID)) >= 2 || (G.activeChallenge(state) && G.gymMatchup(o, G.activeChallenge(state)) === 'super');
+              return `<button data-action="partner" data-id="${o.id}" ${running ? 'disabled' : ''} title="${esc(od.name)} als Partner${adv ? ' · Typvorteil' : ''}"><img src="${pixel(od.spriteID, o.isShiny)}" alt="${esc(od.name)}"><span>${state.expShareEnabled && !od.maxLevel ? `+${share}` : `Lv.${od.level}`}${adv ? ' ×2' : ''}</span></button>`; }).join('')}</div>
+            <label class="switch"><input type="checkbox" data-action="share" ${state.expShareEnabled ? 'checked' : ''}> EP-Teiler <span class="small muted">${state.expShareEnabled ? `Team bekommt ${G.SHARE_PERCENT} %` : 'nur der Partner lernt'}</span></label>
+            ${running ? '' : (() => { const types = G.activeChallenge(state) ? G.challengeTypes(G.activeChallenge(state)) : G.typesOf(G.activeBoss(state).pokedexID);
+              const c = G.bestCounter(state, types); return c && c.id !== partner.id ? `<button class="pill quiet wide" data-action="partner" data-id="${c.id}">Konter${G.activeChallenge(state) ? ` gegen ${esc(G.activeChallenge(state).leader)}` : ' für den Raid'}: ${esc(G.describe(c).name)} Lv. ${G.describe(c).level}</button>` : ''; })()}
+          </details>
         </div>` : mode === 'wild' ? `
-        <div class="panel"><h3>Wilde Begegnung</h3><p class="small muted">Nach der Runde zeigt sich ein Pokémon aus dem Nationaldex. Je länger, desto seltener. Es landet im Team oder im PC.</p>
+        <div class="panel"><h3>Wilde Begegnung${info(`Nach der Runde zeigt sich ein Pokémon aus dem Nationaldex. Je länger, desto seltener. Es landet im Team oder im PC. Im Jagdgebiet haben ${G.C.huntTypeChancePercent} % der wilden Pokémon einen passenden Typ. Jede geschaffte wilde Runde im selben Gebiet verlängert die Pokéradar-Kette (+${G.C.journey.radar.shinyPerLink} % Shiny pro Glied), ein Abbruch lässt sie reißen.`)}</h3>
           <label class="field">Jagdgebiet <select data-action="hunt" ${running ? 'disabled' : ''}>
             <option value="">Überall (alle Typen)</option>
             ${G.C.habitats.places.map((h) => { const dex = G.habitatDex(state, h); const swarm = (G.massOutbreak().habitatID === h.id ? ` · Massenauftreten: ${G.massOutbreak().name}` : '') + (G.roamerIn(state, h) ? ` · Gesichtet: ${G.pokemonName(G.roamerIn(state, h))}` : '');
               return `<option value="${h.id}" ${G.huntHabitat(state)?.id === h.id ? 'selected' : ''} ${G.habitatUnlocked(state, h) ? '' : 'disabled'}>${esc(h.name)} · ${h.types.map((x) => G.typeInfo(x).name).join(', ')} · ${dex.owned}/${dex.total}${esc(swarm)}${G.habitatUnlocked(state, h) ? '' : ' (gesperrt)'}</option>`; }).join('')}
           </select></label>
-          <p class="small muted">Im Jagdgebiet haben ${G.C.huntTypeChancePercent} % der wilden Pokémon einen passenden Typ. Die Zahl zeigt, wie viele Arten dieser Typen du hast.</p>
-          ${G.roamerForNextRound(state, minutes) ? `<p class="small note-share">✨ ${esc(G.pokemonName(G.roamerForNextRound(state, minutes)))} zeigt sich in dieser Runde!</p>` : G.huntHabitat(state) && G.roamerIn(state, G.huntHabitat(state)) ? `<p class="small muted">✨ ${esc(G.pokemonName(G.roamerIn(state, G.huntHabitat(state))))} wurde hier gesichtet. Mit einer Pokéradar-Kette ab ${G.C.zone.roamers.minRadarChain} und einer Runde ab ${G.C.zone.roamers.minMinutes} Min zeigt es sich.</p>` : ''}
-          ${G.radarChain(state) ? `<p class="small note-sun">📡 Pokéradar-Kette ${G.radarChain(state)} · +${G.radarShinyBonus(G.radarChain(state))} % Shiny${G.radarChain(state) >= G.C.journey.radar.lockOnChain ? ' · jede Begegnung passt zum Typ' : ''}. Ein Abbruch lässt sie reißen.</p>`
-            : G.huntHabitat(state) ? `<p class="small muted">📡 Bleib im selben Gebiet: Jede geschaffte wilde Runde verlängert die Pokéradar-Kette (+${G.C.journey.radar.shinyPerLink} % Shiny pro Glied).</p>`
+          ${G.roamerForNextRound(state, minutes) ? `<p class="small note-share">✨ ${esc(G.pokemonName(G.roamerForNextRound(state, minutes)))} zeigt sich in dieser Runde!</p>`
+            : G.radarChain(state) ? `<p class="small note-sun">📡 Pokéradar-Kette ${G.radarChain(state)} · +${G.radarShinyBonus(G.radarChain(state))} % Shiny</p>`
             : `<p class="small muted">${G.DAYTIME_ICON[G.dayTime().id]} ${esc(G.dayTime().name)}: ${esc(G.dayTime().hint)}</p>`}
-          ${state.expShareEnabled ? `<p class="small note-share">EP-Teiler: jedes Team-Mitglied bekommt +${share} EP</p>` : ''}</div>` : ''}
-        ${(() => { const g = G.galacticInvasion(state); return g ? `<div class="panel galactic"><strong>⚠️ Team Galaktik besetzt ${esc(g.name)}!</strong>
-          <p class="small muted">Die Bewohner verstecken sich. Jage dort oder trainiere einen Partner vom Typ ${g.types.map((t) => G.typeInfo(t).name).join(' oder ')}.</p>
-          ${bar(G.galacticProgress(state) / G.C.life.galactic.goalMinutes, '#5A8AA8')}<span class="small muted">${G.galacticProgress(state)} / ${G.C.life.galactic.goalMinutes} Min · ${G.C.life.galactic.rewardCoins} Münzen + Sonderbonbon</span></div>` : ''; })()}
+          <label class="switch"><input type="checkbox" data-action="share" ${state.expShareEnabled ? 'checked' : ''}> EP-Teiler <span class="small muted">${state.expShareEnabled ? `jedes Team-Mitglied +${share} EP` : 'aus'}</span></label></div>` : ''}
         <div class="panel stack">
           <label class="field">Aufgabe (Memo) <select data-action="task" ${running ? 'disabled' : ''}>
             <option value="">Ohne Aufgabe</option>
             ${G.ensureJourney(state).tasks.filter((t) => !t.done).map((t) => `<option value="${t.id}" ${G.activeTask(state)?.id === t.id ? 'selected' : ''}>${esc(t.title)} · ${t.minutes} Min</option>`).join('')}
           </select></label>
           ${running ? '' : `<form class="row" data-form="task"><input name="title" maxlength="60" placeholder="Neue Aufgabe" aria-label="Neue Aufgabe"><button class="pill quiet">+</button><button type="button" class="pill quiet" data-action="tasks">Alle</button></form>`}
-          <label class="field">Pause nach jeder Runde <select data-action="auto-break">${[0, 5, 10, 15].map((m) => `<option value="${m}" ${G.ensureJourney(state).autoBreakMinutes === m ? 'selected' : ''}>${m ? `${m} Min` : 'Aus'}</option>`).join('')}</select></label>
-          <label class="switch"><input type="checkbox" data-action="share" ${state.expShareEnabled ? 'checked' : ''}> EP-Teiler <span class="small muted">${state.expShareEnabled ? `Team bekommt ${G.SHARE_PERCENT} %` : 'nur der Partner lernt'}</span></label>
-          <label class="field">Fokus-Tag
-            <select data-action="tag" ${running ? 'disabled' : ''}>${tags.map((t) => `<option value="${t.id}" ${t.id === tag.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label>
+          <div class="row wrap">
+            <label class="field">Pause <select data-action="auto-break">${[0, 5, 10, 15].map((m) => `<option value="${m}" ${G.ensureJourney(state).autoBreakMinutes === m ? 'selected' : ''}>${m ? `${m} Min` : 'Aus'}</option>`).join('')}</select></label>
+            <label class="field">Fokus-Tag <select data-action="tag" ${running ? 'disabled' : ''}>${tags.map((t) => `<option value="${t.id}" ${t.id === tag.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label>
+          </div>
           ${running ? '' : `
-          <label class="field">Notiz <input data-action="note" value="${esc(app.meta.note || '')}" placeholder="z. B. Vorlesung, Projekt" maxlength="80"></label>
           <details class="extras" ${app.meta.extrasOpen ? 'open' : ''}>
-            <summary data-action="extras">Beeren, Knursp &amp; Pomodoro</summary>
+            <summary data-action="extras">Mehr: Beeren, Pomodoro, Notiz${state.activeBerryBuff || app.meta.pomodoroEnabled || app.meta.note ? ' <span class="dot-on" aria-label="aktiv"></span>' : ''}</summary>
             <div class="berries">${G.C.berries.map((b) => { const count = state.berryInventory?.[b.id] || 0; const problem = G.berryProblem(state, b.id, mode, false);
               return `<button class="chip ${state.activeBerryBuff === b.id ? 'on' : ''}" data-action="berry" data-id="${b.id}" ${!count || problem ? 'disabled' : ''} title="${esc(problem || b.effect)}"><span class="dot" style="background:${b.colorHex}"></span>${esc(b.name)} (${count})</button>`; }).join('')}</div>
             ${state.activeBerryBuff ? `<button class="link" data-action="return-berry">${esc(G.berryName(state.activeBerryBuff))} zurücklegen</button>` : ''}
-            <p class="small muted">Eine Beere pro Runde, bei Abbruch verbraucht.</p>
             <div class="berries">${G.C.poffins.map((p) => `<button class="chip ${app.meta.poffin === p.id ? 'on' : ''}" data-action="poffin" data-id="${esc(p.id)}" title="${esc(p.recipe)}">${esc(p.name)}</button>`).join('')}</div>
             <label class="switch"><input type="checkbox" data-action="pomodoro" ${app.meta.pomodoroEnabled ? 'checked' : ''}> Pomodoro-Kette</label>
             ${app.meta.pomodoroEnabled ? (() => { const p = G.normalizePlan(app.meta.pomodoro); return `
@@ -140,12 +138,13 @@ export function render(view) {
                 <label>Pause <input type="number" min="1" max="15" value="${p.breakMinutes}" data-plan="breakMinutes"></label>
               </div>
               <p class="small muted">Gesamt ${duration(p.rounds * p.focusMinutes + (p.rounds - 1) * p.breakMinutes)} · doppelte Runden-EP · Abschlussbonus +${G.planCompletionXP(p)} EP</p>`; })() : ''}
-          </details>
-          <div class="row">
-            <button class="pill quiet" data-action="repeat" ${recent ? '' : 'disabled'}>Letztes Training</button>
-            <button class="pill quiet" data-action="presets">Vorlagen</button>
-          </div>`}
-          <label class="switch"><input type="checkbox" data-action="strict" ${app.meta.strict ? 'checked' : ''} ${running ? 'disabled' : ''}> Strenger Modus <span class="small muted">Verlassen &gt; 15 Sek. beendet die Runde</span></label>
+            <label class="field">Notiz <input data-action="note" value="${esc(app.meta.note || '')}" placeholder="z. B. Vorlesung, Projekt" maxlength="80"></label>
+            <div class="row">
+              <button class="pill quiet" data-action="repeat" ${recent ? '' : 'disabled'}>Letztes Training</button>
+              <button class="pill quiet" data-action="presets">Vorlagen</button>
+            </div>
+            <label class="switch"><input type="checkbox" data-action="strict" ${app.meta.strict ? 'checked' : ''}> Strenger Modus <span class="small muted">Verlassen &gt; 15 Sek. beendet die Runde</span></label>
+          </details>`}
         </div>
       </div>
     </div>
@@ -448,6 +447,11 @@ export function handle(action, el) {
       app.render(); return true;
     }
     case 'extras': meta.extrasOpen = !el.parentElement.open; saveMeta(); return false;
+    case 'partner-details': meta.partnerDetails = !el.parentElement.open; saveMeta(); return false;
+    case 'custom-time': {
+      if (app.session || !PRESETS.includes(meta.minutes)) return true;
+      meta.customTime = !meta.customTime; saveMeta(); app.render(); return true;
+    }
     case 'habitat-quick': { const msg = G.placeInHabitat(app.state, el.dataset.id, G.habitatByID(el.dataset.habitat)); if (msg) { save(); toast(msg); el.remove(); } return true; }
     case 'poketch-app': { const ids = POKETCH_APPS.map(([id]) => id); meta.poketchApp = ids[(Math.max(0, ids.indexOf(meta.poketchApp || 'timer')) + 1) % ids.length]; saveMeta(); app.render(); return true; }
     case 'dismiss-banner': meta.banner = null; saveMeta(); app.render(); return true;

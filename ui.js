@@ -54,6 +54,22 @@ export const segmented = (key, options) => {
 };
 export const sub = (key, fallback) => app.meta.sub[key] ?? fallback;
 
+// 5.9 – Aufräumen: ⓘ statt Erklärtext, gleiche Seitenköpfe, kleine Unter-Schalter, „Heute“-Streifen.
+export const info = (text) => `<details class="info"><summary aria-label="Erklärung anzeigen" title="So funktioniert's">ⓘ</summary><p>${esc(text)}</p></details>`;
+export const pageHead = (title, subtitle = '', infoText = '', trailing = '') => `<div class="page-head"><div><h2>${esc(title)}${infoText ? info(infoText) : ''}</h2>${subtitle ? `<p class="small muted">${esc(subtitle)}</p>` : ''}</div>${trailing}</div>`;
+export const pills = (key, options, fallback = options[0][0]) => {
+  const current = app.meta.sub[key] ?? fallback;
+  return `<div class="pills" role="tablist">${options.map(([id, label]) => `<button role="tab" data-action="sub" data-key="${key}" data-value="${id}" aria-selected="${id === current}">${esc(label)}</button>`).join('')}</div>`;
+};
+const todayChip = (e) => `<button class="today-chip" style="--c:${G.TODAY_COLORS[e.kind]}" data-action="today" data-kind="${e.kind}" data-habitat="${e.habitatID ?? ''}" data-id="${e.pokemonID ?? ''}" title="${esc(`${e.title} · ${e.detail}`)}">
+  ${e.dexID ? `<img src="${ds(e.dexID)}" alt="">` : '<span aria-hidden="true">⚠️</span>'}<span><strong>${esc(e.title)}</strong><small>${esc(e.detail)}</small></span></button>`;
+export function todayStrip(state, mode) {
+  const events = G.todayEvents(state, mode);
+  if (!events.length) return '';
+  const more = events.length - G.TODAY_VISIBLE;
+  return `<div class="today">${events.slice(0, G.TODAY_VISIBLE).map(todayChip).join('')}${more > 0 ? `<details class="today-more"><summary>+${more} weitere</summary><div class="today-list">${events.map(todayChip).join('')}</div></details>` : ''}</div>`;
+}
+
 function read(key) { try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } }
 function write(key, value) {
   try { value == null ? localStorage.removeItem(key) : localStorage.setItem(key, JSON.stringify(value)); }

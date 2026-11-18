@@ -58,6 +58,15 @@ function common(action, el) {
     case 'tab': app.meta.tab = el.dataset.view; saveMeta(); app.render(); window.scrollTo(0, 0); return true;
     case 'sub': app.meta.sub[el.dataset.key] = el.dataset.value; saveMeta(); app.render(); return true;
     case 'close': closeSheet(); return true;
+    case 'today': {
+      const kind = el.dataset.kind;
+      el.closest('details')?.removeAttribute('open');
+      if (kind === 'galactic') { app.meta.tab = 'safari'; app.meta.sub.safari = 'meadow'; app.meta.habitatID = el.dataset.habitat; }
+      else if (kind === 'roamer' || kind === 'outbreak') { if (!running && !app.meta.pomodoroEnabled) { app.meta.mode = 'wild'; G.setHuntHabitat(s, el.dataset.habitat); save(); } app.meta.tab = 'train'; }
+      else if (kind === 'topform') { if (!running && G.choosePartner(s, el.dataset.id)) { app.meta.mode = 'owned'; save(); } app.meta.tab = 'train'; }
+      else if (kind === 'rival') { app.meta.tab = 'trainer'; app.meta.sub.trainer = 'gyms'; }
+      saveMeta(); app.render(); window.scrollTo(0, 0); return true;
+    }
     case 'inspect': pokemonSheet(el.dataset.id); return true;
     case 'partner': return done(!running && G.choosePartner(s, el.dataset.id), `${G.describe(G.findPokemon(s, el.dataset.id)).name} ist dein Partner.`, 'Das geht gerade nicht.');
     case 'to-pc': return done(G.moveToPC(s, el.dataset.id, running), 'Im PC abgelegt.', 'Dein Team braucht mindestens ein Pokémon.');

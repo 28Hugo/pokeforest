@@ -1,10 +1,9 @@
 // Poké-Shop: species lines, berries, Knursp, Wunder-Tausch and avatar capsules.
 import * as G from '../game.js';
-import { app, $, esc, pixel, typeBadges, num, segmented, sub, save, saveMeta, toast, openSheet, closeSheet } from '../ui.js';
+import { app, $, esc, pixel, typeBadges, num, segmented, sub, pageHead, info, save, saveMeta, toast, openSheet, closeSheet } from '../ui.js';
 
 export function render(view) {
-  view.innerHTML = `<div class="row"><h2>Poké-Shop</h2><span class="muted small">${num(app.state.coins)} Münzen</span></div>
-    <div class="steps-strip small"><span>🌿 Wilde Begegnung</span><span>›</span><span>🛒 Linie erscheint hier</span><span>›</span><span>⚡ Freischalten &amp; trainieren</span></div>
+  view.innerHTML = `${pageHead('Poké-Shop', `${num(app.state.coins)} PokéMünzen`, 'So kommen neue Linien in den Shop: Du triffst ein Pokémon bei einer wilden Begegnung, dann erscheint seine Linie hier. Freischalten, und schon kannst du es trainieren. Längere Begegnungen bringen seltenere Pokémon.')}
     ${segmented('shop', [['lines', 'Pokémon-Linien'], ['items', 'Beeren & Tausch']])}
     <div id="shop-body"></div>`;
   const body = $('#shop-body', view);
@@ -14,18 +13,21 @@ export function render(view) {
 function renderLines(body) {
   const s = app.state;
   const query = (app.meta.shopSearch || '').toLowerCase();
-  const lines = G.availableSpecies(s).filter((x) => !query || `${x.displayName} ${x.stages.map((st) => st.name).join(' ')}`.toLowerCase().includes(query));
-  body.innerHTML = `<input type="search" data-action="shop-search" placeholder="Linie suchen" value="${esc(app.meta.shopSearch || '')}" aria-label="Linien durchsuchen">
+  const lines = G.availableSpecies(s).filter((x) => G.shopMatches(x, query, app.meta.shopType || ''));
+  body.innerHTML = `<div class="row shop-filter"><input type="search" data-action="shop-search" placeholder="Name oder Nr." value="${esc(app.meta.shopSearch || '')}" aria-label="Linien durchsuchen">
+    <select data-action="shop-type" aria-label="Nach Typ filtern"><option value="">Alle Typen</option>${G.C.types.names.map((t, i) => `<option value="${i + 1}" ${String(app.meta.shopType) === String(i + 1) ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
+    <span class="small muted">${lines.length} Linien</span></div>
+    ${lines.length ? '' : '<p class="muted">Keine Linie gefunden. Ändere die Suche oder den Typ.</p>'}
     <div class="lines">${lines.map((x) => {
       const unlocked = G.isUnlocked(s, x); const legend = G.legendaryID(x) != null;
       const own = s.pokemonRoster.find((p) => G.lineKey(p.species) === G.lineKey(x));
       const price = G.shopPrice(s, x); const copy = G.copyPrice(s, x);
       const evo = x.stages.length === 3 ? `Fokus-Entwicklungen: Lv. 16 und 36` : x.stages.length === 2 ? `Fokus-Entwicklung ab Lv. 20` : 'Einzel-Pokémon';
-      return `<div class="line-card" style="--accent:${x.primaryHex}">
+      return `<div class="line-card ${own && own.id === s.selectedPokemonID ? 'active' : ''}" style="--accent:${x.primaryHex}">
         <div class="line-sprites">${x.stages.map((st) => `<img src="${pixel(st.pokedexID)}" alt="${esc(st.name)}" title="${esc(st.name)}" loading="lazy">`).join('')}</div>
         <strong>${esc(G.lineTitle(x))}</strong>${typeBadges(G.typesOf(x.stages[0].pokedexID), true)}<span class="small muted">${evo}</span>
         ${unlocked ? `<div class="row">${own ? `<button class="pill quiet" data-action="partner" data-id="${own.id}" ${app.session ? 'disabled' : ''}>${own.id === s.selectedPokemonID ? 'Aktiv' : 'Trainieren'}</button>` : '<span class="small muted">Kein Exemplar</span>'}
-          ${legend ? '' : `<button class="pill quiet" data-action="adopt-line" data-id="${esc(x.id)}" ${s.coins < copy ? 'disabled' : ''}>+ Exemplar · ${copy}</button>`}</div>`
+          ${legend ? '' : `<button class="pill quiet adopt" data-action="adopt-line" data-id="${esc(x.id)}" ${s.coins < copy ? 'disabled' : ''}>+ Exemplar · ${copy}</button>`}</div>`
           : legend ? '<span class="small muted">Legendär: nur über Raids, Eier oder Begegnungen</span>'
           : `<button class="pill" data-action="unlock-line" data-id="${esc(x.id)}" ${s.coins < price ? 'disabled' : ''}>Freischalten · ${num(price)} Münzen</button>`}
       </div>`; }).join('')}</div>`;
@@ -36,8 +38,7 @@ function berryPlots(s) {
   const P = G.C.journey.berryPlots;
   const plots = G.ensureJourney(s).berryPlots;
   const inv = s.berryInventory || {};
-  return `<div class="panel berry-beds"><h3>Beerenbeete in Flori</h3>
-    <p class="small muted">Pflanze eine Beere aus deinem Beutel. Sie wächst mit jeder Fokus-Minute und ist nach ${P.growMinutes} Minuten reif. Bei der Ernte bekommst du ${P.harvestMin} bis ${P.harvestMax} Beeren.</p>
+  return `<div class="panel berry-beds"><h3>Beerenbeete in Flori${info(`Pflanze eine Beere aus deinem Beutel. Sie wächst mit jeder Fokus-Minute und ist nach ${P.growMinutes} Minuten reif. Bei der Ernte bekommst du ${P.harvestMin} bis ${P.harvestMax} Beeren.`)}</h3>
     <div class="beds">${plots.map((plot, i) => { const stage = G.plotStage(plot); const b = G.C.berries.find((x) => x.id === plot.berryID);
       return `<div class="bed stage${stage}">
         <div class="soil">${stage === 4 ? `<span class="ripe" style="--c:${b.colorHex}">●●●</span>` : `<span>${PLANT_ART[stage]}</span>`}</div>
@@ -99,6 +100,7 @@ export function input(el) {
   return true;
 }
 export function change(el) {
+  if (el.dataset.action === 'shop-type') { app.meta.shopType = el.value; saveMeta(); app.render(); return true; }
   if (el.dataset.action !== 'plant' || !el.value) return false;
   if (G.plantBerry(app.state, el.value, Number(el.dataset.index))) { save(); toast(`${G.berryName(el.value)} gepflanzt.`); }
   app.render();

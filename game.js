@@ -1939,3 +1939,55 @@ export function settleMany(state, ids) {
   return n;
 }
 export const topAbortReason = (state) => Object.entries(ensureJourney(state).abortReasons).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+
+// MARK: 5.9 – Aufräumen (gleiche Regeln wie TidyModels.swift)
+export const TODAY_ORDER = ['galactic', 'roamer', 'outbreak', 'topform', 'rival'];
+export const TODAY_COLORS = { galactic: '#5A8AA8', roamer: '#9B6BD6', outbreak: '#3FAE5A', topform: '#F0A030', rival: '#E07A3A' };
+/** Everything special about today, most urgent first. */
+export function todayEvents(state, mode = 'owned', date = new Date()) {
+  const events = [];
+  const g = galacticInvasion(state, date);
+  if (g) events.push({ kind: 'galactic', title: `Team Galaktik besetzt ${g.name}`, detail: `${galacticProgress(state, date)} / ${L().galactic.goalMinutes} Min zum Vertreiben`, habitatID: g.id });
+  for (const r of roamersToday(state, date)) {
+    if (habitatUnlocked(state, r.habitat)) events.push({ kind: 'roamer', title: `${pokemonName(r.dexID)} gesichtet`, detail: `Heute ${r.habitat.locative}`, dexID: r.dexID, habitatID: r.habitat.id });
+  }
+  const o = massOutbreak(date);
+  if (habitatUnlocked(state, o.habitat)) events.push({ kind: 'outbreak', title: `Massenauftreten: ${o.name}`, detail: `Jage ${o.habitat.locative}`, dexID: o.dexID, habitatID: o.habitat.id });
+  const starID = pokemonOfTheDay(state.pokemonRoster, date);
+  const star = starID ? findPokemon(state, starID) : null;
+  if (star && (star.id !== state.selectedPokemonID || mode !== 'owned')) events.push({ kind: 'topform', title: `${describe(star).name} in Topform`, detail: `+${DAY_BONUS_PERCENT} % EP als Partner`, dexID: describe(star).spriteID, pokemonID: star.id });
+  const r = rival(state, date);
+  if (r.active && !r.beaten) events.push({ kind: 'rival', title: 'Kampf gegen Barry läuft', detail: `${Math.max(0, rivalMaxHP(state) - r.damage)} / ${rivalMaxHP(state)} KP übrig`, dexID: rivalAce(state, date) });
+  return events.map((e, i) => [e, i]).sort((a, b) => (TODAY_ORDER.indexOf(a[0].kind) - TODAY_ORDER.indexOf(b[0].kind)) || a[1] - b[1]).map(([e]) => e);
+}
+export const TODAY_VISIBLE = 1;
+
+/** Trainer page: four areas with two pages each. */
+export const TRAINER_GROUPS = [
+  { id: 'gyms', title: 'Arenen', subs: [['gyms', 'Arenen'], ['badges', 'Orden']] },
+  { id: 'battles', title: 'Kämpfe', subs: [['zone', 'Kampfzone'], ['contest', 'Wettbewerb']] },
+  { id: 'quests', title: 'Quests', subs: [['raids', 'Raids & Quests'], ['research', 'Forschung']] },
+  { id: 'dex', title: 'Pokédex & Profil', subs: [['league', 'Liga & Pokédex'], ['profile', 'Profil']] },
+];
+export const trainerGroupOf = (sub) => TRAINER_GROUPS.find((g) => g.subs.some(([id]) => id === sub)) ?? TRAINER_GROUPS[0];
+
+/** Unlocked habitats, the next one to unlock and the selected one; the rest folds away. */
+export function habitatLayout(state, selectedID, expanded = false) {
+  const all = C.habitats.places;
+  if (expanded) return { shown: all, hidden: 0 };
+  const locked = all.filter((h) => !habitatUnlocked(state, h));
+  const next = locked.reduce((best, h) => (!best || h.requiredMinutes < best.requiredMinutes ? h : best), null);
+  const shown = all.filter((h) => habitatUnlocked(state, h) || h.id === next?.id || h.id === selectedID);
+  return { shown, hidden: all.length - shown.length };
+}
+
+export const DURATION_PRESETS = [15, 25, 45, 60, 90];
+export const durationShowsSlider = (minutes, custom) => !!custom || !DURATION_PRESETS.includes(minutes);
+/** Shop search: name, line or Pokédex number, plus an optional type. */
+export function shopMatches(species, query = '', type = '') {
+  if (type && !typesOf(species.stages[0].pokedexID).includes(Number(type))) return false;
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  if (/^\d+$/.test(q)) return species.stages.some((st) => st.pokedexID === Number(q));
+  return [species.displayName, lineTitle(species), ...species.stages.map((st) => st.name)].some((x) => String(x).toLowerCase().includes(q));
+}
