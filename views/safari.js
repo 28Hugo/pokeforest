@@ -8,7 +8,7 @@ export function render(view) {
   const s = app.state;
   const residents = Object.values(s.habitatResidents || {}).reduce((a, ids) => a + ids.length, 0);
   view.innerHTML = `${pageHead('Safari', `${s.pokemonRoster.length} Begleiter · ${residents} wohnen in Lebensräumen`)}
-    ${segmented('safari', [['meadow', 'Lebensräume'], ['pension', `Pension${s.journey?.pension?.egg ? ' 🥚' : ''}`], ['team', 'Team & PC'], ['dig', `Untergrund${(s.undergroundCharges ?? 1) > 0 ? ` (${s.undergroundCharges ?? 1})` : ''}`], ['chronik', 'Chronik']])}
+    ${segmented('safari', [['meadow', 'Lebensräume'], ['pension', `Pension${s.journey?.pension?.egg ? ' 🥚' : ''}`], ['dig', `Untergrund${(s.undergroundCharges ?? 1) > 0 ? ` (${s.undergroundCharges ?? 1})` : ''}`], ['team', 'Team & PC'], ['chronik', 'Chronik']])}
     <div id="safari-body"></div>`;
   const body = $('#safari-body', view);
   const chronik = (b) => { b.innerHTML = `${pills('chronik', [['stats', 'Kalender'], ['log', 'Logbuch']])}<div id="chronik-body"></div>`; (sub('chronik', 'stats') === 'log' ? renderLog : renderStats)($('#chronik-body', b)); };
@@ -65,17 +65,10 @@ function renderHabitats(body) {
       ${open ? '' : `<div class="habitat-lock"><strong>🔒 Ab ${num(h.requiredMinutes)} Fokus-Minuten</strong><small>Du hast ${num(G.totalMinutes(s))} Minuten.</small></div>`}
     </div>
     <div class="panel stack">
-      <p>${esc(h.flavor)}</p>
-      ${typeBadges(h.types)}
+      <div class="row">${typeBadges(h.types)}${info(`${h.flavor} Bewohner bekommen ${H.residentSharePercent} % deiner Fokus-Minuten als EP. Ist der Lebensraum voll, bekommen Partner vom Typ ${h.types.map((t) => G.typeInfo(t).name).join(' oder ')} +${H.fullHabitatBonusPercent} % EP.${(s.claimedHabitatIDs || []).includes(h.id) ? '' : ` Beim ersten Mal voll: +${H.firstFillReward} PokéMünzen.`} Pokédex dieser Typen: ${dex.owned} / ${dex.total}.`)}</div>
       <div class="row small"><strong>Bewohner</strong><span>${residents.length} / ${H.capacity}</span></div>
       ${bar(residents.length / H.capacity, full ? 'var(--sun)' : null)}
-      <p class="small muted">Pokédex dieser Typen: ${dex.owned} / ${dex.total}</p>
-      <ul class="bonus-list small">
-        <li>🚶 Bewohner bekommen ${H.residentSharePercent} % deiner Fokus-Minuten als EP.</li>
-        <li class="${full ? 'note-sun' : ''}">${full ? '★' : '☆'} ${full ? `Voll: Partner vom Typ ${h.types.map((t) => G.typeInfo(t).name).join(' oder ')} bekommen +${H.fullHabitatBonusPercent} % EP.` : `Wenn voll: Partner vom passenden Typ bekommen +${H.fullHabitatBonusPercent} % EP.`}</li>
-        ${(s.claimedHabitatIDs || []).includes(h.id) ? '' : `<li>🎁 Beim ersten Mal voll: +${H.firstFillReward} PokéMünzen</li>`}
-        ${partner && boosted?.id === h.id ? `<li class="note-share">✓ ${esc(G.describe(partner).name)} profitiert gerade davon.</li>` : ''}
-      </ul>
+      <p class="small ${full ? 'note-sun' : 'muted'}">${full ? '★ Voll' : '☆ Voll gibt'} +${H.fullHabitatBonusPercent} % EP${partner && boosted?.id === h.id ? ` · ${esc(G.describe(partner).name)} profitiert` : ''}</p>
       <button class="pill" data-action="habitat-add" ${!open || full ? 'disabled' : ''}>Pokémon einziehen lassen</button>
       ${open && !full && fitting ? `<button class="pill quiet" data-action="habitat-auto">✨ Passende einziehen lassen (${Math.min(fitting, H.capacity - residents.length)})</button>` : ''}
     </div>
@@ -176,10 +169,9 @@ function renderDig(body) {
         : `<div class="panel stack"><strong>⏳ Nächste Grabung in ${G.minutesToNextDig(s)} Fokus-Minuten</strong>${bar(G.digProgress(G.minutesToNextDig(s)), '#9A7448')}</div>`}
       ${bagPanel(s)}`;
   }
-  const part = sub('dig', 'dig');
   body.innerHTML = `
-    <div class="row">${pills('dig', [['dig', 'Graben'], ['base', 'Geheimbasis']])}${info(`Pro ${U.minutesPerDig} Fokus-Minuten bekommst du eine Grabung. Leg Schätze frei, bevor die Wand einstürzt. Kleine Kugel +10 Münzen · Große Kugel +30 · Herzschuppe: eine Beere · Entwicklungssteine landen im Beutel · Fossilien erwachen als Koknodon, Schilterus, Amonitas, Kabuto, Anorith, Liliep oder Aerodactyl.`)}</div>
-    ${part === 'base' ? secretBase(s) : `
+    <div class="row"><h3>Untergrund${info(`Pro ${U.minutesPerDig} Fokus-Minuten bekommst du eine Grabung. Leg Schätze frei, bevor die Wand einstürzt. Kleine Kugel +10 Münzen · Große Kugel +30 · Herzschuppe: eine Beere · Entwicklungssteine landen im Beutel · Fossilien erwachen als Koknodon, Schilterus, Amonitas, Kabuto, Anorith, Liliep oder Aerodactyl.`)}</h3></div>
+    ${`
     <div class="row"><strong>⛏ ${charges} / ${U.maxCharges} Grabungen bereit</strong>${charges < U.maxCharges ? `<span class="small muted">nächste in ${G.minutesToNextDig(s)} Min</span>` : ''}</div>
     ${charges < U.maxCharges && !wall ? `<button class="pill quiet" data-action="buy-dig" ${G.canBuyDig(s) ? '' : 'disabled'}>+1 Grabung für ${G.C.zone.extra.extraDigPrice} Münzen (1× am Tag)</button>` : ''}
     ${content}`}`;
@@ -190,34 +182,6 @@ function bagPanel(s) {
   return `<div class="panel"><h3>Beutel</h3>${items.length ? `<div class="row wrap">${items.map(([id, name, c]) => `<span class="chip" style="background:${c}33">${esc(name)} × ${G.itemCount(s, id)}</span>`).join('')}</div><p class="small muted">Benutzen kannst du sie im Steckbrief eines Pokémon.</p>`
     : '<p class="small muted">Noch leer. Steine findest du im Untergrund, Sonderbonbons im Kampfpunkte-Laden.</p>'}</div>`;
 }
-function secretBase(s) {
-  const L = G.C.life; const b = G.ensureJourney(s).base;
-  const art = (item) => (item?.dex ? `<img src="${ds(item.dex)}" alt="">` : `<span class="decor" style="--c:${item?.colorHex}">${DECOR_ICON[item?.id] ?? '■'}</span>`);
-  const cells = [];
-  for (let y = 0; y < L.baseRows; y++) for (let x = 0; x < L.baseColumns; x++) {
-    const placed = b.placed.find((p) => p.x === x && p.y === y);
-    cells.push(`<button class="base-cell" data-action="base-cell" data-x="${x}" data-y="${y}" aria-label="${placed ? esc(G.decorItem(placed.item)?.name) : 'Freies Feld'}">${placed ? art(G.decorItem(placed.item)) : ''}</button>`);
-  }
-  const palette = Object.keys(b.owned).map(G.decorItem).filter((item) => item && G.decorAvailable(s, item.id) > 0);
-  const chosen = G.decorItem(app.meta.baseItem);
-  return `<div class="base-layout">
-    <div class="base" style="--cols:${L.baseColumns}">${cells.join('')}</div>
-    <div class="stack"><h3>Zum Aufstellen</h3>
-      ${palette.length ? `<div class="decor-palette">${palette.map((item) => `<button class="${app.meta.baseItem === item.id ? 'on' : ''}" data-action="base-pick" data-id="${item.id}" title="${esc(item.name)}">${art(item)}<small>${G.decorAvailable(s, item.id)}×</small></button>`).join('')}</div>
-        <p class="small muted">${chosen ? `${esc(chosen.name)}: tippe auf ein freies Feld.` : 'Wähle ein Teil, dann ein Feld.'}</p>`
-        : '<p class="small muted">Alles steht. Kauf neue Möbel oder Puppen.</p>'}
-      <button class="pill quiet" data-action="base-shop">🛒 Möbel &amp; Puppen kaufen</button></div></div>`;
-}
-function baseShop() {
-  const s = app.state; const L = G.C.life;
-  const art = (item) => (item?.dex ? `<img src="${ds(item.dex)}" alt="">` : `<span class="decor" style="--c:${item?.colorHex}">${DECOR_ICON[item?.id] ?? '■'}</span>`);
-  openSheet(`<h2>Einrichten</h2><p class="small muted">${num(s.coins)} PokéMünzen</p>
-    <div class="decor-shop">${L.decor.map((item) => { const owned = G.ensureJourney(s).base.owned[item.id] || 0;
-      return `<div class="decor-chip">${art(item)}<small>${esc(item.name)}${owned ? ` · ${owned}×` : ''}</small><button class="pill quiet small" data-action="base-buy" data-id="${item.id}" ${s.coins < item.price ? 'disabled' : ''}>${item.price} Münzen</button></div>`; }).join('')}</div>
-    <label class="field">Puppe kaufen (${L.dollPrice} Münzen) <input data-action="doll" placeholder="Name oder Nummer, z. B. Plinfa" aria-label="Puppe kaufen"></label>
-    <button class="pill" data-action="close">Fertig</button>`);
-}
-const DECOR_ICON = { pflanze: '🪴', tisch: '🪵', stuhl: '🪑', teppich: '▦', fass: '🛢', ziegel: '🧱', lampe: '💡', pokeball: '◓', flagge: '🚩' };
 
 // MARK: Team & PC
 function renderTeam(body) {
@@ -386,18 +350,9 @@ export function handle(action, el) {
     case 'pc-pick': { const set = new Set(meta.pcPicked || []); set.has(el.dataset.id) ? set.delete(el.dataset.id) : set.add(el.dataset.id); meta.pcPicked = [...set]; saveMeta(); app.render(); return true; }
     case 'pc-pick-all': meta.pcPicked = [...s.pcBoxes[meta.boxIndex].pokemonIDs]; saveMeta(); app.render(); return true;
     case 'pc-settle': { const n = G.settleMany(s, meta.pcPicked || []); meta.pcPicked = []; saveMeta(); return done(n > 0, `${n} Pokémon sind eingezogen.`, 'Kein passender freier Lebensraum.'); }
-    case 'base-pick': meta.baseItem = el.dataset.id; saveMeta(); app.render(); return true;
-    case 'base-buy': { if (G.buyDecor(s, el.dataset.id)) { meta.baseItem = el.dataset.id; save(); saveMeta(); toast(`${G.decorItem(el.dataset.id)?.name ?? 'Teil'} gekauft.`); } else toast('Zu wenig Münzen.'); app.render(); if (el.closest('dialog')) baseShop(); return true; }
-    case 'base-shop': baseShop(); return true;
     case 'pc-reset': meta.pcSearch = ''; meta.pcType = ''; meta.pcFit = false; saveMeta(); app.render(); return true;
     case 'heat-toggle': meta.showHeat = !meta.showHeat; saveMeta(); app.render(); return true;
     case 'habitats-all': meta.allHabitats = !meta.allHabitats; saveMeta(); app.render(); return true;
-    case 'base-cell': {
-      const x = Number(el.dataset.x); const y = Number(el.dataset.y);
-      if (G.ensureJourney(s).base.placed.some((p) => p.x === x && p.y === y)) G.removeDecor(s, x, y);
-      else if (meta.baseItem && !G.placeDecor(s, meta.baseItem, x, y)) toast('Kauf zuerst noch eins davon.');
-      save(); app.render(); return true;
-    }
     case 'habitat-auto': { const r = G.autoFillHabitat(s, currentHabitat()); return done(r.placed > 0, r.message, 'Kein passendes Pokémon frei.'); }
     case 'pension-pick': pensionPicker(); return true;
     case 'pension-add': {
@@ -439,9 +394,6 @@ export function change(el) {
     case 'pc-fit': meta.pcFit = el.checked; saveMeta(); app.render(); return true;
     case 'pc-move': if (el.value !== '') { const n = G.moveMany(s, meta.pcPicked || [], Number(el.value)); meta.pcPicked = []; saveMeta(); save(); toast(`${n} Pokémon verschoben.`); app.render(); } return true;
     case 'wallpaper': G.setWallpaper(s, meta.boxIndex, el.value); save(); app.render(); return true;
-    case 'doll': { const q = el.value.trim().toLowerCase(); const n = Number(q) || (G.C.names.findIndex((x) => x.toLowerCase().startsWith(q)) + 1);
-      if (q && n >= 1 && n <= 1025) { if (G.buyDecor(s, `puppe-${n}`)) { meta.baseItem = `puppe-${n}`; save(); saveMeta(); toast(`${G.pokemonName(n)}-Puppe gekauft.`); closeSheet(); } else toast('Zu wenig Münzen.'); }
-      app.render(); return true; }
     case 'sort-box': if (el.value) { G.sortBox(s, meta.boxIndex, el.value); save(); app.render(); } return true;
     case 'log-shiny': meta.logShiny = el.checked; saveMeta(); app.render(); return true;
   }

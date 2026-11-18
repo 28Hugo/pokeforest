@@ -819,3 +819,51 @@ kbd { font: 700 0.85rem ui-monospace, SFMono-Regular, Menlo, monospace; padding:
 }
 .trainer-head { grid-template-columns: 48px 1fr; padding: 10px 14px; }
 .trainer-head p { margin: 0; }
+
+/* 5.11 – Fokus auf das Wesentliche */
+#view > * + * { margin-top: 18px; }
+.panel { padding: 16px 18px; }
+.segmented.compact-mode { max-width: 380px; margin: 4px auto 0; }
+.inline-bar { gap: 8px; align-items: center; flex-wrap: nowrap; }
+.inline-bar .bar { flex: 1; min-width: 60px; margin: 0; }
+.today-chip { --c: var(--forest); background: var(--surface); border-color: var(--line); }
+.one-line { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.next-goal { display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center; }
+.goal-icon { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: var(--forest); font-size: 1.2rem; }
+.bell { position: relative; }
+.bell summary { list-style: none; cursor: pointer; font-size: 1.15rem; position: relative; padding: 2px 4px; }
+.bell summary::-webkit-details-marker { display: none; }
+.bell summary b { position: absolute; top: -4px; right: -6px; font-size: 0.62rem; background: var(--sun); color: #fff; border-radius: 999px; padding: 0 5px; }
+.bell-list { position: absolute; z-index: 25; right: 0; top: 2.2em; width: min(320px, 86vw); max-height: 60vh; overflow: auto; display: grid; gap: 6px; padding: 12px; border-radius: var(--radius-s); background: var(--surface-strong); border: 1px solid var(--line); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); }
+.bell-list p { margin: 0; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.lines { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+.line-card .line-sprites img { width: 44px; height: 44px; }
+.line-card > .small.muted { display: none; }
+/* Animationen */
+.result-card { position: relative; overflow: hidden; }
+.result-card.enter { animation: result-in 0.45s cubic-bezier(.2, .8, .2, 1); }
+@keyframes result-in { from { transform: translateY(-14px); opacity: 0; } to { transform: none; opacity: 1; } }
+.result-art { position: relative; width: 64px; height: 64px; display: grid; place-items: center; }
+.result-art img { width: 64px; height: 64px; image-rendering: pixelated; }
+.result-art.catch img { animation: pop-in 0.35s 1.45s both cubic-bezier(.2, 1.4, .4, 1); }
+.catch-ball { position: absolute; width: 30px; height: 30px; border-radius: 50%; border: 3px solid #222; background: linear-gradient(#E3463B 0 46%, #222 46% 54%, #fff 54%); animation: wobble 0.45s 3 ease-in-out, vanish 0.2s 1.35s forwards; transform-origin: 50% 100%; }
+@keyframes wobble { 25% { transform: rotate(18deg); } 75% { transform: rotate(-18deg); } }
+@keyframes vanish { to { opacity: 0; transform: scale(0.4); } }
+@keyframes pop-in { from { transform: scale(0.2); opacity: 0; } to { transform: none; opacity: 1; } }
+.sparkles { position: absolute; inset: -6px; display: grid; place-items: center; color: #F5C542; font-size: 0.8rem; letter-spacing: 14px; animation: sparkle 1s ease-out forwards; pointer-events: none; }
+@keyframes sparkle { from { transform: scale(0.4); opacity: 1; } to { transform: scale(1.6); opacity: 0; } }
+.fill-anim { animation: fill 0.9s 0.2s ease-out both; }
+@keyframes fill { from { width: var(--from); } }
+.confetti { position: absolute; inset: 0; pointer-events: none; }
+.confetti i { position: absolute; top: -10px; left: var(--x); width: 6px; height: 10px; border-radius: 2px; background: var(--c); animation: confetti 1.6s var(--d) ease-in forwards; }
+@keyframes confetti { to { transform: translateY(160px) rotate(300deg); opacity: 0; } }
+.lcd-sprite-img.hop { animation: hop 1.1s ease-in-out infinite; }
+@keyframes hop { 50% { transform: translateY(-4px); } }
+.today-chip .new-dot { animation: pulse 0.5s 2 ease-in-out; }
+@keyframes pulse { 50% { transform: scale(1.8); } }
+#view.page-in { animation: page-in 0.22s ease-out; }
+@keyframes page-in { from { opacity: 0.4; } }
+@media (prefers-reduced-motion: reduce) {
+  .result-card.enter, .result-art.catch img, .catch-ball, .sparkles, .fill-anim, .confetti i, .lcd-sprite-img.hop, .today-chip .new-dot, #view { animation: none !important; }
+  .catch-ball, .confetti, .sparkles { display: none; }
+}

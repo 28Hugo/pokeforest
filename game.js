@@ -1322,6 +1322,11 @@ export function ensureJourney(state) {
   j.boxWallpapers ||= {}; j.abortReasons ||= {};
   j.tutorialSeen ??= false; j.autoBreakMinutes ??= 0;
   j.seenToday ||= [];
+  // 5.11: the Geheimbasis is gone. Bought parts come back as coins, once.
+  if (j.base && (Object.keys(j.base.owned || {}).length || (j.base.placed || []).length)) {
+    state.coins = (state.coins || 0) + baseRefund(j.base.owned || {});
+    j.base = { owned: {}, placed: [] };
+  }
   return j;
 }
 export const pokemonName = (dex) => C.names[dex - 1] ?? `#${dex}`;
@@ -1889,27 +1894,7 @@ function advanceSpear(state, minutes) {
     primaryHex: dex === 487 ? '#5A5068' : dex === 483 ? '#4A6AB8' : '#C890C8', secondaryHex: '#2A2438', elementType: 'Legendär', loreText: 'Auf der Speersäule getroffen.' });
   return `Speersäule: ${name} schließt sich dir an!`;
 }
-// Geheimbasis
-export function decorItem(id) {
-  const item = L().decor.find((x) => x.id === id);
-  if (item) return item;
-  const dex = id?.startsWith('puppe-') ? Number(id.slice(6)) : 0;
-  return dex ? { id, name: `${pokemonName(dex)}-Puppe`, price: L().dollPrice, colorHex: '#F28AB8', dex } : null;
-}
-export const decorAvailable = (state, id) => (ensureJourney(state).base.owned[id] || 0) - state.journey.base.placed.filter((x) => x.item === id).length;
-export function buyDecor(state, id) {
-  const item = decorItem(id);
-  if (!item || state.coins < item.price) return false;
-  state.coins -= item.price; const b = ensureJourney(state).base; b.owned[id] = (b.owned[id] || 0) + 1;
-  return true;
-}
-export function placeDecor(state, id, x, y) {
-  const b = ensureJourney(state).base;
-  if (decorAvailable(state, id) < 1 || x < 0 || y < 0 || x >= L().baseColumns || y >= L().baseRows || b.placed.some((p) => p.x === x && p.y === y)) return false;
-  b.placed.push({ id: newID(), item: id, x, y });
-  return true;
-}
-export function removeDecor(state, x, y) { const b = ensureJourney(state).base; b.placed = b.placed.filter((p) => !(p.x === x && p.y === y)); }
+// Geheimbasis: seit 5.11 entfernt, siehe baseRefund.
 // Box-Hintergründe
 export function wallpaperOf(state, index) {
   const box = state.pcBoxes[index]; const list = L().wallpapers;
@@ -2030,3 +2015,49 @@ export function shopArranged(lines, scope, owned, unlocked) {
 }
 export const SHORTCUTS_WEB = [['Leertaste', 'Runde starten oder Ewigstein-Pause'], ['1 – 5', 'Seiten wechseln'], ['?', 'Diese Übersicht']];
 export const digProgress = (minutesToNext) => Math.min(1, Math.max(0, (C.underground.minutesPerDig - minutesToNext) / C.underground.minutesPerDig));
+
+// MARK: 5.11 – Fokus auf das Wesentliche (gleiche Regeln wie PolishThreeModels.swift)
+export function baseRefund(owned) {
+  return Object.entries(owned).reduce((sum, [id, n]) => {
+    const item = L().decor.find((d) => d.id === id);
+    const price = item ? item.price : id.startsWith('puppe-') ? L().dollPrice : 0;
+    return sum + price * Math.max(0, n);
+  }, 0);
+}
+export function pickNextGoal({ claimableDaily, weeklyReady, gym, rival: fight, weekly, nextLeader }) {
+  if (weeklyReady > 0) return { icon: '🎁', title: weeklyReady === 1 ? 'Eine Wochen-Quest ist fertig' : `${weeklyReady} Wochen-Quests sind fertig`, detail: 'Belohnung in der Kampfzone abholen', action: 'zone' };
+  if (claimableDaily > 0) return { icon: '🎁', title: claimableDaily === 1 ? 'Eine Tages-Quest ist fertig' : `${claimableDaily} Tages-Quests sind fertig`, detail: 'Belohnung unter Raids & Quests abholen', action: 'raids' };
+  if (gym && gym.maxHP > 0) return { icon: '⚔️', title: `${gym.leader}: noch ${gym.hpLeft} KP`, detail: 'Jede Runde mit deinem Partner zählt', progress: 1 - gym.hpLeft / gym.maxHP, action: 'train' };
+  if (fight && fight.maxHP > 0) return { icon: '⚔️', title: `Barry: noch ${fight.hpLeft} KP`, detail: 'Der Wochenkampf läuft', progress: 1 - fight.hpLeft / fight.maxHP, action: 'train' };
+  const open = weekly.filter((q) => q.target > 0 && q.progress < q.target && q.progress > 0);
+  if (open.length) {
+    const best = open.reduce((a, b) => (b.progress / b.target > a.progress / a.target ? b : a));
+    return { icon: '📅', title: best.title, detail: `${best.progress} / ${best.target} diese Woche`, progress: best.progress / best.target, action: 'train' };
+  }
+  if (nextLeader) return { icon: '🏅', title: `Nächster Arenaleiter: ${nextLeader}`, detail: 'Herausfordern unter Arenen', action: 'gyms' };
+  return null;
+}
+export function nextGoal(state) {
+  const c = activeChallenge(state);
+  const r = rival(state);
+  return pickNextGoal({
+    claimableDaily: (state.dailyQuests || []).filter((q) => !q.isClaimed && q.currentValue >= q.targetValue).length,
+    weeklyReady: readyWeeklyCount(state),
+    gym: c ? { leader: c.leader, hpLeft: gymHPLeft(state), maxHP: challengeMaxHP(state, c) } : null,
+    rival: r.active && !r.beaten ? { hpLeft: Math.max(0, rivalMaxHP(state) - r.damage), maxHP: rivalMaxHP(state) } : null,
+    weekly: Z().weekly.filter((q) => !weeklyClaimed(state, q.id)).map((q) => ({ title: q.title, progress: weeklyProgress(state, q.id), target: q.target })),
+    nextLeader: nextChallenge(state)?.leader ?? null,
+  });
+}
+const HIGHLIGHT_ORDER = ['Level-up', 'Arena', 'Entwicklung', 'Geschlüpft', 'Rivale', 'Team Galaktik', 'Speersäule'];
+export function resultHighlights(notes = []) {
+  return notes.map((n, i) => [HIGHLIGHT_ORDER.findIndex((p) => n.startsWith(p)), i, n]).filter(([r]) => r >= 0)
+    .sort((a, b) => (a[0] - b[0]) || (a[1] - b[1])).slice(0, 2).map(([, , n]) => n);
+}
+export const MESSAGE_MAX = 12;
+export function addMessage(log = [], message) {
+  const clean = String(message || '').trim();
+  if (!clean || log[0] === clean) return log;
+  return [clean, ...log].slice(0, MESSAGE_MAX);
+}
+export const POKETCH_ESSENTIALS = ['timer', 'memo', 'pedometer', 'party'];

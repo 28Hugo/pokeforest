@@ -55,9 +55,10 @@ function common(action, el) {
   const running = !!app.session;
   const done = (ok, msg, fail) => { if (ok) { save(); if (msg) toast(msg); } else if (fail) toast(fail); closeSheet(); app.render(); return true; };
   switch (action) {
-    case 'tab': app.meta.tab = el.dataset.view; saveMeta(); app.render(); window.scrollTo(0, 0); return true;
+    case 'tab': { app.meta.tab = el.dataset.view; saveMeta(); app.render(); window.scrollTo(0, 0); const v = $('#view'); v.classList.remove('page-in'); void v.offsetWidth; v.classList.add('page-in'); return true; }
     case 'sub': app.meta.sub[el.dataset.key] = el.dataset.value; saveMeta(); app.render(); return true;
     case 'close': closeSheet(); return true;
+    case 'bell': app.meta.unread = 0; saveMeta(); el.querySelector('b')?.remove(); return true;
     case 'today-more': if (G.markTodaySeen(s, app.meta.mode)) save(); return true;
     case 'sheet-tab': app.meta.sheetTab = el.dataset.tab; saveMeta(); pokemonSheet(el.dataset.id); return true;
     case 'shortcuts': showShortcuts(); return true;

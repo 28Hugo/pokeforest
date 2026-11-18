@@ -1,6 +1,6 @@
 // Training & Gras: own Pokémon or wild encounter, Pomodoro chains, Ewigstein, berries and Knursp.
 import * as G from '../game.js';
-import { app, $, esc, art, pixel, ds, jingle, typeBadges, duration, bar, pageHead, todayStrip, info, emptyState, save, saveMeta, saveSession, toast, openSheet, closeSheet, queueEvolutions, playEvolutions } from '../ui.js';
+import { app, $, esc, art, pixel, ds, jingle, typeBadges, duration, bar, pageHead, todayStrip, info, emptyState, bell, save, saveMeta, saveSession, toast, openSheet, closeSheet, queueEvolutions, playEvolutions } from '../ui.js';
 
 const PRESETS = G.DURATION_PRESETS;
 const MODE_RAW = { owned: 'Eigenes Pokémon trainieren', wild: 'Wilde Begegnung (Nationaldex)' };
@@ -48,12 +48,12 @@ export function render(view) {
   const bonuses = d ? [ep.day && ['☀️', `Pokémon des Tages: +${G.DAY_BONUS_PERCENT} % EP`], ep.naturePct && ['🙂', `Wesen ${G.natureOf(partner).name}: +${ep.naturePct} % EP`], ep.habitat && ['🏡', 'Voller Lebensraum'], state.activeBerryBuff === 'epbeere' && ['⚡', 'EP-Beere: doppelte EP'], state.expShareEnabled && ['🔗', 'EP-Teiler an']].filter(Boolean) : [];
   const evolvesNow = d?.nextEvolutionName && d.toNextEvolution <= gain;
   view.innerHTML = `
-    ${running ? '' : pageHead('Training', today >= goal ? `Tagesziel erreicht · ${today} Min heute` : `Noch ${goal - today} Min bis zum Tagesziel`, '', todayStrip(state, mode))}
+    ${running ? '' : pageHead('Training', today >= goal ? `Tagesziel erreicht · ${today} Min heute` : `Noch ${goal - today} Min bis zum Tagesziel`, '', `<div class="row">${todayStrip(state, mode)}${bell()}</div>`)}
     ${banner && banner.ok && banner.recap && app.meta.lastResult && !running ? resultCard(app.meta.lastResult, state) : banner ? `<div class="banner ${banner.ok ? '' : 'bad'}"><p>${esc(banner.text)}</p>${banner.recap ? '<button class="link" data-action="recap">Trainingsmoment ansehen</button>' : ''}<button class="icon-btn small" data-action="dismiss-banner" aria-label="Hinweis schließen">×</button></div>` : ''}
     ${running ? '' : `
-    <div class="mode-switch" role="tablist" aria-label="Trainingsart">
-      <button role="tab" data-action="mode" data-mode="owned" aria-selected="${mode === 'owned'}" ${app.meta.pomodoroEnabled && mode !== 'owned' ? '' : ''}><strong>Eigenes Pokémon</strong><span>Lv. 1–100, Entwicklungen, Mega</span></button>
-      <button role="tab" data-action="mode" data-mode="wild" aria-selected="${mode === 'wild'}"><strong>Wilde Begegnung</strong><span>Zufall aus #1–#1025 fangen</span></button>
+    <div class="segmented compact-mode" role="tablist" aria-label="Trainingsart">
+      <button role="tab" data-action="mode" data-mode="owned" aria-selected="${mode === 'owned'}" title="Lv. 1–100, Entwicklungen, Mega">Eigenes Pokémon</button>
+      <button role="tab" data-action="mode" data-mode="wild" aria-selected="${mode === 'wild'}" title="Zufall aus #1–#1025 fangen">Wilde Begegnung</button>
     </div>`}
     ${mode === 'wild' ? `
     <div class="tiers" role="group" aria-label="Seltenheit">
@@ -84,8 +84,7 @@ export function render(view) {
           <div class="partner-card"><img src="${art(d.spriteID, partner.isShiny)}" alt=""><div>
             <h3>${esc(d.name)} <span class="muted small">Lv. ${d.level}</span></h3>
             ${typeBadges(G.pokemonTypes(partner), true)}
-            ${bar(d.progress)}
-            <p class="small muted">${d.maxLevel ? 'Level 100 · Fokus-Champion' : `Diese Runde +${gain} EP → Lv. ${projected.level}`} ${bonuses.map(([icon, text]) => `<span class="bonus" title="${esc(text)}" aria-label="${esc(text)}">${icon}</span>`).join('')}</p>
+            <div class="row inline-bar">${bar(d.progress)}<span class="small muted">${d.maxLevel ? 'Lv. 100' : `+${gain} EP → Lv. ${projected.level}`}</span>${bonuses.map(([icon, text]) => `<span class="bonus" title="${esc(text)}" aria-label="${esc(text)}">${icon}</span>`).join('')}</div>
             ${evolvesNow ? `<p class="small note-sun">✨ Diese Runde entwickelt es sich zu ${esc(d.nextEvolutionName)}!</p>` : ''}
           </div></div>
           <details class="more-info" ${app.meta.partnerDetails ? 'open' : ''}><summary data-action="partner-details">Details</summary>
@@ -113,19 +112,19 @@ export function render(view) {
             : G.radarChain(state) ? `<p class="small note-sun">📡 Pokéradar-Kette ${G.radarChain(state)} · +${G.radarShinyBonus(G.radarChain(state))} % Shiny</p>`
             : `<p class="small muted">${G.DAYTIME_ICON[G.dayTime().id]} ${esc(G.dayTime().name)}: ${esc(G.dayTime().hint)}</p>`}
           <label class="switch"><input type="checkbox" data-action="share" ${state.expShareEnabled ? 'checked' : ''}> EP-Teiler <span class="small muted">${state.expShareEnabled ? `jedes Team-Mitglied +${share} EP` : 'aus'}</span></label></div>` : ''}
-        <div class="panel stack">
+        ${running ? '' : `<div class="panel stack">
           <label class="field">Aufgabe (Memo) <select data-action="task" ${running ? 'disabled' : ''}>
             <option value="">Ohne Aufgabe</option>
             ${G.ensureJourney(state).tasks.filter((t) => !t.done).map((t) => `<option value="${t.id}" ${G.activeTask(state)?.id === t.id ? 'selected' : ''}>${esc(t.title)} · ${t.minutes} Min</option>`).join('')}
           </select></label>
           ${running ? '' : `<form class="row" data-form="task"><input name="title" maxlength="60" placeholder="Neue Aufgabe" aria-label="Neue Aufgabe"><button class="pill quiet" aria-label="Aufgabe anlegen">+</button><button type="button" class="pill quiet" data-action="tasks">Alle</button></form>`}
-          <div class="row wrap">
-            <label class="field">Pause <select data-action="auto-break">${[0, 5, 10, 15].map((m) => `<option value="${m}" ${G.ensureJourney(state).autoBreakMinutes === m ? 'selected' : ''}>${m ? `${m} Min` : 'Aus'}</option>`).join('')}</select></label>
-            <label class="field">Fokus-Tag <select data-action="tag" ${running ? 'disabled' : ''}>${tags.map((t) => `<option value="${t.id}" ${t.id === tag.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label>
-          </div>
           ${running ? '' : `
           <details class="extras" ${app.meta.extrasOpen ? 'open' : ''}>
-            <summary data-action="extras">Mehr: Beeren, Pomodoro, Notiz${state.activeBerryBuff || app.meta.pomodoroEnabled || app.meta.note ? ' <span class="dot-on" aria-label="aktiv"></span>' : ''}</summary>
+            <summary data-action="extras"><span class="dot" style="background:${tag.colorHex ?? 'var(--forest)'}"></span>Mehr: ${esc(tag.name)}, Pause, Beeren, Pomodoro, Notiz${state.activeBerryBuff || app.meta.pomodoroEnabled || app.meta.note || G.ensureJourney(state).autoBreakMinutes ? ' <span class="dot-on" aria-label="aktiv"></span>' : ''}</summary>
+            <div class="row wrap">
+              <label class="field">Fokus-Tag <select data-action="tag">${tags.map((t) => `<option value="${t.id}" ${t.id === tag.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label>
+              <label class="field">Pause nach jeder Runde <select data-action="auto-break">${[0, 5, 10, 15].map((m) => `<option value="${m}" ${G.ensureJourney(state).autoBreakMinutes === m ? 'selected' : ''}>${m ? `${m} Min` : 'Aus'}</option>`).join('')}</select></label>
+            </div>
             <div class="berries">${G.C.berries.map((b) => { const count = state.berryInventory?.[b.id] || 0; const problem = G.berryProblem(state, b.id, mode, false);
               return `<button class="chip ${state.activeBerryBuff === b.id ? 'on' : ''}" data-action="berry" data-id="${b.id}" ${!count || problem ? 'disabled' : ''} title="${esc(problem || b.effect)}"><span class="dot" style="background:${b.colorHex}"></span>${esc(b.name)} (${count})</button>`; }).join('')}</div>
             ${state.activeBerryBuff ? `<button class="link" data-action="return-berry">${esc(G.berryName(state.activeBerryBuff))} zurücklegen</button>` : ''}
@@ -145,11 +144,18 @@ export function render(view) {
             </div>
             <label class="switch"><input type="checkbox" data-action="strict" ${app.meta.strict ? 'checked' : ''}> Strenger Modus <span class="small muted">Verlassen &gt; 15 Sek. beendet die Runde</span></label>
           </details>`}
-        </div>
+        </div>`}
       </div>
     </div>
     ${running ? '' : `<div class="start-bar"><button class="start" data-action="start">${mode === 'wild' ? `Ins hohe Gras gehen · ${minutes} Min` : `${esc(d?.name ?? 'Training')} trainieren · ${minutes} Min`} · bis ${new Date(Date.now() + minutes * 60000).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}</button></div>`}`;
 
+  view.querySelectorAll('.count-up').forEach((el) => {
+    const to = Number(el.dataset.to); const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce || !to) { el.textContent = String(to); return; }
+    const start = performance.now();
+    const step = (t) => { const k = Math.min(1, (t - start - 200) / 800); el.textContent = String(Math.max(0, Math.round(to * (1 - (1 - Math.max(0, k)) ** 3)))); if (k < 1) requestAnimationFrame(step); };
+    requestAnimationFrame(step);
+  });
   const range = $('#minutes', view);
   range?.addEventListener('input', () => { app.meta.minutes = Number(range.value); saveMeta(); $('#clock').textContent = `${String(app.meta.minutes).padStart(2, '0')}:00`; const pct = $('#lcd-pct'); if (pct) pct.textContent = `${app.meta.minutes} Min`; });
   range?.addEventListener('change', () => app.render());
@@ -162,6 +168,8 @@ export function render(view) {
 
 // MARK: Pokétch (the watch from Diamant/Perl/Platin)
 const POKETCH_APPS = [['timer', 'Fokus-Uhr'], ['pedometer', 'Schrittzähler'], ['party', 'Pokémon-Liste'], ['friendship', 'Freundschaftstest'], ['calendar', 'Kalender'], ['clock', 'Analoguhr'], ['memo', 'Memo']];
+/** 5.11: four apps by default, the rest in the settings. */
+const visibleApps = () => (app.meta.poketchExtras ? POKETCH_APPS : POKETCH_APPS.filter(([id]) => G.POKETCH_ESSENTIALS.includes(id)));
 const lastRound = () => (app.state.plantedTrees || []).find((t) => t.survived && !t.wasWildEncounter && G.findPokemon(app.state, t.pokemonID));
 function clockHands(date = new Date()) {
   const h = date.getHours() % 12; const m = date.getMinutes(); const sec = date.getSeconds();
@@ -169,7 +177,7 @@ function clockHands(date = new Date()) {
 }
 const lcdBar = (fraction, id = '') => `<div class="lcd-bar" ${id ? `id="${id}"` : ''}>${Array.from({ length: 20 }, (_, i) => `<i class="${i < Math.round(fraction * 20) ? 'on' : ''}"></i>`).join('')}</div>`;
 function poketch({ state, s, running, mode, minutes, partner, d, gain, coins, phase }) {
-  const appID = POKETCH_APPS.some(([id]) => id === app.meta.poketchApp) ? app.meta.poketchApp : 'timer';
+  const appID = visibleApps().some(([id]) => id === app.meta.poketchApp) ? app.meta.poketchApp : 'timer';
   let screen;
   if (appID === 'pedometer') {
     const today = G.todayMinutes(state); const goal = G.dailyGoal(state);
@@ -214,7 +222,7 @@ function poketch({ state, s, running, mode, minutes, partner, d, gain, coins, ph
     const hunt = G.huntHabitat(state);
     screen = `<div class="lcd-row"><span>${label}</span><span id="lcd-pct">${running ? '0 %' : `${minutes} Min`}</span></div>
       <div class="lcd-main">${mode === 'wild' ? '<div class="lcd-ball" aria-hidden="true"></div>'
-        : `<button class="lcd-sprite" data-action="tab" data-view="safari" ${running ? 'disabled' : ''} aria-label="Partner im Team wechseln"><img class="lcd-sprite-img" src="${ds(d?.spriteID ?? 1, partner?.isShiny)}" alt="${esc(d?.name)}"></button>`}
+        : `<button class="lcd-sprite" data-action="tab" data-view="safari" ${running ? 'disabled' : ''} aria-label="Partner im Team wechseln"><img class="lcd-sprite-img ${running && phase === 'focus' ? 'hop' : ''}" src="${ds(d?.spriteID ?? 1, partner?.isShiny)}" alt="${esc(d?.name)}"></button>`}
         <div class="lcd-digits" id="clock">${String(minutes).padStart(2, '0')}:00</div></div>
       ${lcdBar(0, 'lcd-bar')}
       <div class="lcd-row"><span>${mode === 'wild' ? (G.radarChain(state) ? `Radar-Kette ${G.radarChain(state)}` : `Jagd: ${esc(hunt?.name ?? 'überall')}`) : G.activeChallenge(state) ? `Arena ${esc(G.activeChallenge(state).leader)}: ${G.gymHPLeft(state)} KP` : `${esc(d?.name)} Lv. ${d?.level}`}</span><span>${mode === 'wild' ? `+${coins} Münzen` : `+${gain} EP`}</span></div>`;
@@ -222,7 +230,7 @@ function poketch({ state, s, running, mode, minutes, partner, d, gain, coins, ph
   return `<div class="poketch">
     <div class="poketch-body"><div class="lcd" aria-live="off">${screen}</div></div>
     <div class="poketch-side"><button class="poketch-button" data-action="poketch-app" aria-label="Pokétch-App wechseln, jetzt ${POKETCH_APPS.find(([id]) => id === appID)[1]}"></button>
-      ${POKETCH_APPS.map(([id]) => `<span class="poketch-dot ${id === appID ? 'on' : ''}"></span>`).join('')}</div>
+      ${visibleApps().map(([id]) => `<span class="poketch-dot ${id === appID ? 'on' : ''}"></span>`).join('')}</div>
   </div>`;
 }
 
@@ -297,6 +305,7 @@ function finishRound() {
     ? `${result.shiny ? '✨ Shiny! ' : ''}Wilde Begegnung: ${result.captured.formName} gefangen${result.inPC ? ' (Team voll – im PC)' : ''}! +${result.coins} Münzen.`
     : `${result.partnerName} · Lv. ${result.partner.level} trainiert! +${result.coins} Münzen.`;
   app.meta.banner = { ok: true, text: result.breakStarted ? `Runde ${result.round}/${s.pomodoro.rounds} geschafft! ${s.pomodoro.breakMinutes} Min Pause.` : text, recap: true };
+  app.meta.messages = G.addMessage(app.meta.messages || [], app.meta.banner.text); app.meta.unread = Math.min((app.meta.unread || 0) + 1, G.MESSAGE_MAX);
   saveMeta();
   const won = result.gym?.defeated ? G.challengeByID(result.gym.challengeID) : null;
   if (result.pension?.hatched) { jingle('hatch'); celebrate('hatch', result.pension.hatched, () => showRecap(result)); }
@@ -453,7 +462,7 @@ export function handle(action, el) {
       meta.customTime = !meta.customTime; saveMeta(); app.render(); return true;
     }
     case 'habitat-quick': { const msg = G.placeInHabitat(app.state, el.dataset.id, G.habitatByID(el.dataset.habitat)); if (msg) { save(); toast(msg); el.remove(); } return true; }
-    case 'poketch-app': { const ids = POKETCH_APPS.map(([id]) => id); meta.poketchApp = ids[(Math.max(0, ids.indexOf(meta.poketchApp || 'timer')) + 1) % ids.length]; saveMeta(); app.render(); return true; }
+    case 'poketch-app': { const ids = visibleApps().map(([id]) => id); meta.poketchApp = ids[(Math.max(0, ids.indexOf(meta.poketchApp || 'timer')) + 1) % ids.length]; saveMeta(); app.render(); return true; }
     case 'dismiss-banner': meta.banner = null; saveMeta(); app.render(); return true;
     case 'recap': showRecap(); return true;
     case 'repeat': {
@@ -545,22 +554,28 @@ document.addEventListener('keydown', (event) => {
 });
 export function resume() { if (app.session?.mode === 'wild' && !app.session.wildBranches && !app.session.inBreak) loadWild(); }
 
-/** 5.10: compact result of the last round, with „Nochmal“. */
+/** 5.10/5.11: compact, animated result of the last round, with „Nochmal“. */
 function resultCard(r, state) {
   const sprite = r.wild ? r.captured?.spriteID : r.partner?.spriteID;
   const title = r.wild ? `${esc(r.captured?.formName ?? r.captured?.name ?? 'Pokémon')} gefangen!` : `${esc(r.partnerName)} hat trainiert`;
   const xp = r.partnerXP;
-  return `<div class="panel result-card">
-    ${sprite ? `<img src="${ds(sprite, r.shiny)}" alt="">` : ''}
+  const leveled = xp && xp.to > xp.from;
+  const notes = G.resultHighlights([...(r.levelUps || []).map((l) => `Level-up: ${l.name} Lv. ${l.from} → ${l.to}`), ...(r.notes || [])]);
+  const fresh = app.meta.resultShown !== r.round + '|' + r.coins + '|' + sprite;
+  if (fresh) { app.meta.resultShown = r.round + '|' + r.coins + '|' + sprite; saveMeta(); }
+  return `<div class="panel result-card ${fresh ? 'enter' : ''}">
+    <div class="result-art ${r.wild && fresh ? 'catch' : ''}">${r.wild && fresh ? '<span class="catch-ball" aria-hidden="true"></span>' : ''}${sprite ? `<img src="${ds(sprite, r.shiny)}" alt="">` : ''}${(leveled || r.shiny) && fresh ? '<span class="sparkles" aria-hidden="true">✦ ✦ ✦</span>' : ''}</div>
     <div class="stack">
       <div class="row wrap"><strong>${title}</strong>${r.shiny ? ' <span class="note-sun">✦</span>' : ''}${r.reachedGoal ? '<span class="goal-plaque">🏅 Tagesziel erreicht</span>' : ''}</div>
-      ${xp ? `<div class="row"><span class="small"><strong>${xp.to > xp.from ? `Lv. ${xp.from} → ${xp.to}` : `Lv. ${xp.to}`}</strong></span>${bar(xp.progressAfter)}<span class="small muted">+${xp.gained} EP</span></div>` : ''}
-      <p class="small"><span class="coin-dot"></span>+${r.coins} Münzen · ${r.minutes} Min${r.inPC ? ' · im PC' : ''}</p>
+      ${xp ? `<div class="row"><span class="small"><strong>${leveled ? `Lv. ${xp.from} → ${xp.to}` : `Lv. ${xp.to}`}</strong></span><div class="bar"><span class="${fresh ? 'fill-anim' : ''}" style="--from:${Math.round((leveled ? 0 : xp.progressBefore) * 100)}%;width:${Math.round(xp.progressAfter * 100)}%"></span></div><span class="small muted">+${xp.gained} EP</span></div>` : ''}
+      <p class="small"><span class="coin-dot"></span>+<span class="${fresh ? 'count-up' : ''}" data-to="${r.coins}">${fresh ? 0 : r.coins}</span> Münzen · ${r.minutes} Min${r.inPC ? ' · im PC' : ''}</p>
+      ${notes.map((n) => `<p class="small muted one-line">${esc(n)}</p>`).join('')}
     </div>
     <div class="stack result-actions">
       ${lastRound() ? '<button class="pill small" data-action="again">↻ Nochmal</button>' : ''}
       <button class="link" data-action="recap">Details</button>
     </div>
     <button class="icon-btn small" data-action="dismiss-banner" aria-label="Ergebnis schließen">×</button>
+    ${r.reachedGoal && fresh ? `<div class="confetti" aria-hidden="true">${Array.from({ length: 24 }, (_, i) => `<i style="--x:${(i * 37) % 100}%;--d:${(i % 6) * 0.08}s;--c:${['#47C77A', '#F5C542', '#E8920E', '#E86A9A', '#4A8AE8', '#9B6BD6'][i % 6]}"></i>`).join('')}</div>` : ''}
   </div>`;
 }

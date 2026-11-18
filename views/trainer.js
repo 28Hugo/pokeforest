@@ -19,6 +19,9 @@ export function render(view) {
         <p class="small" style="color:${rank.colorHex}">Lv. ${level} · ${rank.badgeEmoji} ${esc(rank.title)}${streak ? ` · ${streak} ${streak === 1 ? 'Tag' : 'Tage'} Serie` : ''}</p>
         ${bar(progress, rank.colorHex)}<p class="small muted">${num(G.trainerThreshold(level + 1) - xp)} XP bis zum nächsten Level</p></div>
     </div>
+    ${(() => { const goal = G.nextGoal(s); return goal ? `<div class="panel next-goal"><span class="goal-icon" aria-hidden="true">${goal.icon}</span>
+      <div class="stack"><small class="muted">Nächstes Ziel</small><strong>${esc(goal.title)}</strong>${goal.progress != null ? bar(goal.progress) : ''}<small class="muted">${esc(goal.detail)}</small></div>
+      <button class="pill" data-action="goal" data-goal="${goal.action}" ${goal.action === 'train' && app.session ? 'disabled' : ''}>${goal.action === 'train' ? 'Zum Training' : 'Ansehen'}</button></div>` : ''; })()}
     <div class="segmented" role="tablist">${G.TRAINER_GROUPS.map((g) => { const ready = g.id === 'battles' ? G.readyWeeklyCount(s) : 0;
       return `<button role="tab" data-action="sub" data-key="trainer" data-value="${g.subs[0][0]}" aria-selected="${g.id === group.id}">${esc(g.title)}${ready ? ` (${ready})` : ''}</button>`; }).join('')}</div>
     ${pills('trainer', group.subs, current)}
@@ -336,6 +339,7 @@ export function handle(action, el) {
   const s = app.state;
   const done = (msg) => { save(); if (msg) toast(msg); closeSheet(); app.render(); return true; };
   switch (action) {
+    case 'goal': { const g = el.dataset.goal; if (g === 'train') { app.meta.tab = 'train'; } else { app.meta.sub.trainer = g; } saveMeta(); app.render(); window.scrollTo(0, 0); return true; }
     case 'counter': if (!app.session && G.choosePartner(app.state, el.dataset.id)) { app.meta.mode = 'owned'; app.meta.tab = 'train'; save(); saveMeta(); app.render(); window.scrollTo(0, 0); } return true;
     case 'badge': { const b = G.badges(s).find((x) => x.id === el.dataset.id); toast(`${b.name} (${b.leader}): ${b.text}${b.earned ? ' ✓' : ''}`); return true; }
     case 'bosses': bossSheet(); return true;

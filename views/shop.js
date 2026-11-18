@@ -60,6 +60,7 @@ function renderItems(body) {
     <div class="stack">${G.C.berries.map((b) => `<div class="panel item-row"><span class="dot big" style="background:${b.colorHex}"></span>
       <div><strong>${esc(b.name)}</strong> <span class="small muted">× ${inv[b.id] || 0}</span><p class="small muted">${esc(b.effect)}</p></div>
       <button class="pill" data-action="buy-berry" data-id="${b.id}" ${s.coins < b.price ? 'disabled' : ''}>${b.price} Münzen</button></div>`).join('')}</div>
+    <details class="extras" ${app.meta.shopExtrasOpen ? 'open' : ''}><summary data-action="shop-extras">Mehr: Knursp-Bäckerei, Wunder-Tausch &amp; Kapsel-Automat</summary>
     <h3>Knursp-Bäckerei</h3>
     <div class="stack">${G.C.poffins.map((p) => `<div class="panel item-row"><div><strong>${esc(p.name)}</strong><p class="small muted">${esc(p.recipe)}</p></div>
       <button class="pill quiet" data-action="poffin" data-id="${esc(p.id)}" ${app.meta.poffin === p.id ? 'disabled' : ''}>${app.meta.poffin === p.id ? 'Gebacken' : 'Backen'}</button></div>`).join('')}
@@ -69,13 +70,14 @@ function renderItems(body) {
       <button class="pill" data-action="wonder" ${s.coins < G.WONDER_TRADE_PRICE ? 'disabled' : ''}>Tauschen</button></div>
     <h3>Profilbild-Kapsel</h3>
     <div class="panel item-row"><p class="small">Zieh für ${G.AVATAR_CAPSULE_PRICE} Münzen ein neues Trainer-Profilbild (${(s.unlockedAvatarIDs || []).length}/${G.C.avatars.length}).</p>
-      <button class="pill" data-action="capsule" ${s.coins < G.AVATAR_CAPSULE_PRICE ? 'disabled' : ''}>Ziehen</button></div>`;
+      <button class="pill" data-action="capsule" ${s.coins < G.AVATAR_CAPSULE_PRICE ? 'disabled' : ''}>Ziehen</button></div></details>`;
 }
 
 export function handle(action, el) {
   const s = app.state;
   const species = () => G.availableSpecies(s).find((x) => x.id === el.dataset.id);
   switch (action) {
+    case 'shop-extras': app.meta.shopExtrasOpen = !el.parentElement.open; saveMeta(); return false;
     case 'shop-reset': app.meta.shopSearch = ''; app.meta.shopType = ''; app.meta.sub.shopScope = 'all'; saveMeta(); app.render(); return true;
     case 'unlock-line': {
       const x = species();

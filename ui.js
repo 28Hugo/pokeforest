@@ -61,6 +61,8 @@ export const pills = (key, options, fallback = options[0][0]) => {
   const current = app.meta.sub[key] ?? fallback;
   return `<div class="pills" role="tablist">${options.map(([id, label]) => `<button role="tab" data-action="sub" data-key="${key}" data-value="${id}" aria-selected="${id === current}">${esc(label)}</button>`).join('')}</div>`;
 };
+export const bell = () => `<details class="bell"><summary data-action="bell" aria-label="Meldungen${app.meta.unread ? `, ${app.meta.unread} neu` : ''}" title="Meldungen">🔔${app.meta.unread ? `<b>${app.meta.unread}</b>` : ''}</summary>
+  <div class="bell-list"><strong>Meldungen</strong>${(app.meta.messages || []).map((m) => `<p class="small">${esc(m)}</p>`).join('') || '<p class="small muted">Noch nichts Neues.</p>'}</div></details>`;
 export const emptyState = (icon, text, action = '', label = '', extra = '') => `<div class="empty-state"><span aria-hidden="true">${icon}</span><p>${esc(text)}</p>${action ? `<button class="pill quiet small" data-action="${action}" ${extra}>${esc(label)}</button>` : ''}</div>`;
 export function showShortcuts() {
   openSheet(`<h2>Tastenkürzel</h2><dl class="shortcuts">${G.SHORTCUTS_WEB.map(([k, t]) => `<dt><kbd>${esc(k)}</kbd></dt><dd>${esc(t)}</dd>`).join('')}</dl>
@@ -96,6 +98,8 @@ export function replaceState(state) { app.state = G.prepareSave(state); save(); 
 
 /** Short message; with `action` ({ label, action }) it carries a button, e.g. „Rückgängig“. */
 export function toast(message, action = null) {
+  // 5.11: every message also lands in the bell.
+  if (app.meta) { const before = app.meta.messages || []; app.meta.messages = G.addMessage(before, message); if (app.meta.messages !== before) app.meta.unread = Math.min((app.meta.unread || 0) + 1, G.MESSAGE_MAX); saveMeta(); }
   const el = $('#toast');
   el.textContent = message;
   if (action) { const b = document.createElement('button'); b.className = 'link'; b.dataset.action = action.action; b.textContent = action.label; el.append(' ', b); }

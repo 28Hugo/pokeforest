@@ -79,6 +79,7 @@ function renderSettings(body) {
       <label class="field">Erscheinungsbild <select data-setting="appearance">${[['auto', 'Wie das Gerät'], ['light', 'Hell'], ['dark', 'Dunkel']].map(([id, label]) => `<option value="${id}" ${(app.meta.appearance || 'auto') === id ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
       <label class="switch"><input type="checkbox" data-setting="wakeLock" ${app.meta.wakeLock ? 'checked' : ''}> Bildschirm anlassen <span class="small muted">während einer Runde</span></label>
       <label class="switch"><input type="checkbox" data-setting="sound" ${app.meta.sound === false ? '' : 'checked'}> Melodien <span class="small muted">bei Level-up, Orden und Schlüpfen</span></label>
+      <label class="switch"><input type="checkbox" data-setting="poketchExtras" ${app.meta.poketchExtras ? 'checked' : ''}> Pokétch-Zusatz-Apps <span class="small muted">Freundschaftstest, Kalender, Analoguhr</span></label>
       <label class="switch"><input type="checkbox" data-setting="strict" ${app.meta.strict ? 'checked' : ''}> Strenger Modus <span class="small muted">ersetzt den Fokus-Wächter des Macs</span></label>
     </div>
     <div class="panel stack">
@@ -100,7 +101,7 @@ function renderSettings(body) {
     if (key === 'dailyGoal') { s.dailyGoalMinutes = Math.max(5, Math.min(720, Number(el.value) || 90)); save(); }
     if (key === 'appearance') { app.meta.appearance = el.value; saveMeta(); applyAppearance(); }
     if (key === 'strict') { app.meta.strict = el.checked; saveMeta(); }
-    if (key === 'wakeLock' || key === 'sound') { app.meta[key] = el.checked; saveMeta(); }
+    if (key === 'wakeLock' || key === 'sound' || key === 'poketchExtras') { app.meta[key] = el.checked; saveMeta(); }
     app.render();
   }));
 }
