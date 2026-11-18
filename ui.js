@@ -61,13 +61,20 @@ export const pills = (key, options, fallback = options[0][0]) => {
   const current = app.meta.sub[key] ?? fallback;
   return `<div class="pills" role="tablist">${options.map(([id, label]) => `<button role="tab" data-action="sub" data-key="${key}" data-value="${id}" aria-selected="${id === current}">${esc(label)}</button>`).join('')}</div>`;
 };
-const todayChip = (e) => `<button class="today-chip" style="--c:${G.TODAY_COLORS[e.kind]}" data-action="today" data-kind="${e.kind}" data-habitat="${e.habitatID ?? ''}" data-id="${e.pokemonID ?? ''}" title="${esc(`${e.title} · ${e.detail}`)}">
-  ${e.dexID ? `<img src="${ds(e.dexID)}" alt="">` : '<span aria-hidden="true">⚠️</span>'}<span><strong>${esc(e.title)}</strong><small>${esc(e.detail)}</small></span></button>`;
+export const emptyState = (icon, text, action = '', label = '', extra = '') => `<div class="empty-state"><span aria-hidden="true">${icon}</span><p>${esc(text)}</p>${action ? `<button class="pill quiet small" data-action="${action}" ${extra}>${esc(label)}</button>` : ''}</div>`;
+export function showShortcuts() {
+  openSheet(`<h2>Tastenkürzel</h2><dl class="shortcuts">${G.SHORTCUTS_WEB.map(([k, t]) => `<dt><kbd>${esc(k)}</kbd></dt><dd>${esc(t)}</dd>`).join('')}</dl>
+    <p class="small muted">Die Leertaste wirkt nur auf der Training-Seite und nicht in Eingabefeldern.</p><button class="pill" data-action="close">Fertig</button>`);
+}
+const todayChip = (e, isNew = false) => `<button class="today-chip" style="--c:${G.TODAY_COLORS[e.kind]}" data-action="today" data-kind="${e.kind}" data-habitat="${e.habitatID ?? ''}" data-id="${e.pokemonID ?? ''}" title="${esc(`${e.title} · ${e.detail}`)}">
+  ${e.dexID ? `<img src="${ds(e.dexID)}" alt="">` : '<span aria-hidden="true">⚠️</span>'}<span><strong>${esc(e.title)}${isNew ? ' <i class="new-dot" aria-label="neu"></i>' : ''}</strong><small>${esc(e.detail)}</small></span></button>`;
 export function todayStrip(state, mode) {
   const events = G.todayEvents(state, mode);
   if (!events.length) return '';
   const more = events.length - G.TODAY_VISIBLE;
-  return `<div class="today">${events.slice(0, G.TODAY_VISIBLE).map(todayChip).join('')}${more > 0 ? `<details class="today-more"><summary>+${more} weitere</summary><div class="today-list">${events.map(todayChip).join('')}</div></details>` : ''}</div>`;
+  const unseen = new Set(G.unseenToday(state, mode).map((e) => e.id));
+  const hiddenNew = events.slice(G.TODAY_VISIBLE).some((e) => unseen.has(e.id));
+  return `<div class="today">${events.slice(0, G.TODAY_VISIBLE).map((e) => todayChip(e, unseen.has(e.id))).join('')}${more > 0 ? `<details class="today-more"><summary data-action="today-more">+${more} weitere${hiddenNew ? ' <i class="new-dot" aria-label="neu"></i>' : ''}</summary><div class="today-list">${events.map((e) => todayChip(e, unseen.has(e.id))).join('')}</div></details>` : ''}</div>`;
 }
 
 function read(key) { try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } }
@@ -218,7 +225,7 @@ export function pokemonSheet(id) {
     <div class="row wrap">${candies && !d.maxLevel ? `<button class="pill quiet" data-action="candy" data-id="${id}">Sonderbonbon geben (${candies})</button>` : ''}
       ${stone ? `<button class="pill quiet" data-action="stone" data-id="${id}" data-stone="${stone.id}">${esc(stone.name)} verwenden (${G.itemCount(state, stone.id)})</button>` : ''}</div></div>`;
   let actions = '';
-  if (!trip && id !== state.selectedPokemonID) actions += `<button class="pill" data-action="partner" data-id="${id}" ${running ? 'disabled' : ''}>Als Trainingspartner wählen</button>`;
+  const partnerButton = !trip && id !== state.selectedPokemonID ? `<button class="pill wide" data-action="partner" data-id="${id}" ${running ? 'disabled' : ''}>Als Trainingspartner wählen</button>` : '';
   if (inTeam) actions += `<button class="pill quiet" data-action="to-pc" data-id="${id}" ${state.teamPokemonIDs.length <= 1 || (running && id === state.selectedPokemonID) ? 'disabled' : ''}>In den PC</button>`;
   else if (trip) actions += trip.progressMinutes >= G.EXPEDITIONS[trip.kind].goal ? `<button class="pill" data-action="claim-trip" data-id="${trip.id}">Fundstücke abholen</button>` : `<button class="pill quiet" data-action="recall" data-id="${trip.id}">Zurückrufen</button>`;
   else {
@@ -237,6 +244,7 @@ export function pokemonSheet(id) {
     }
   }
   const legend = G.legendaryID(p.species) != null;
+  const tab = ['stats', 'evo', 'manage'].includes(app.meta.sheetTab) ? app.meta.sheetTab : 'stats';
   openSheet(`
     <div class="sheet-head"><img src="${art(d.spriteID, p.isShiny)}" alt=""><div>
       <h2>${esc(d.name)}${p.isShiny ? ' <span class="note-sun">✦</span>' : ''}</h2>
@@ -247,11 +255,12 @@ export function pokemonSheet(id) {
       <p class="small muted">${d.maxLevel ? 'Level 100 erreicht.' : `Noch ${d.minutesToNextLevel} Fokus-Min bis Lv. ${d.level + 1}.`}${d.nextEvolutionName ? ` Entwicklung zu ${esc(d.nextEvolutionName)} in ${duration(d.minutesToNextEvolution)}.` : ''}</p>
       <p class="small muted">${p.trainingMinutes} Min gemeinsam · ${p.sessions} Trainings · +${d.raidBonus} % Raid-Bonus</p>
     </div></div>
-    ${trainerMemo(p)}
-    ${journeyPanel}
+    ${partnerButton}
+    <div class="segmented small" role="tablist">${[['stats', 'Werte'], ['evo', 'Entwicklung & Items'], ['manage', 'Verwalten']].map(([key, label]) => `<button role="tab" data-action="sheet-tab" data-tab="${key}" data-id="${id}" aria-selected="${tab === key}">${label}</button>`).join('')}</div>
+    ${tab === 'evo' ? journeyPanel : tab === 'manage' ? `
     <form class="row" data-form="rename" data-id="${id}"><input name="nickname" maxlength="24" placeholder="Spitzname" value="${esc(p.nickname)}" aria-label="Spitzname"><button class="pill quiet">Speichern</button></form>
     <div class="actions">${actions}
       ${legend ? '' : `<button class="pill quiet" data-action="adopt" data-species="${esc(p.species.id)}">Weiteres Exemplar · ${G.copyPrice(state, p.species)} Münzen</button>`}
-      <button class="pill danger" data-action="release" data-id="${id}" ${running || trip ? 'disabled' : ''}>Freilassen …</button>
-      <button class="pill quiet" data-action="close">Schließen</button></div>`);
+      <button class="pill danger" data-action="release" data-id="${id}" ${running || trip ? 'disabled' : ''}>Freilassen …</button></div>` : trainerMemo(p)}
+    <button class="pill quiet" data-action="close">Schließen</button>`);
 }

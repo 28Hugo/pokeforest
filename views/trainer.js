@@ -66,7 +66,7 @@ function renderGyms(body) {
         <div class="row wrap">
           ${active ? `<button class="pill" data-action="tab" data-view="train">Zum Training</button><button class="pill quiet" data-action="leave-gym" ${running ? 'disabled' : ''}>Kampf verlassen</button>`
             : `<button class="pill" data-action="challenge" data-id="${c.id}" ${running ? 'disabled' : ''}>Herausfordern</button>`}
-          ${counter && counter.id !== partner?.id ? `<button class="pill quiet" data-action="partner" data-id="${counter.id}" ${running ? 'disabled' : ''}>Konter: ${esc(G.describe(counter).name)} Lv. ${G.describe(counter).level}</button>` : ''}
+          ${counter && counter.id !== partner?.id ? `<button class="pill quiet" data-action="counter" data-id="${counter.id}" ${running ? 'disabled' : ''} title="Macht es zum Partner und öffnet das Training">Konter: ${esc(G.describe(counter).name)} Lv. ${G.describe(counter).level}</button>` : ''}
         </div>
       </div></div>`;
   }
@@ -336,6 +336,7 @@ export function handle(action, el) {
   const s = app.state;
   const done = (msg) => { save(); if (msg) toast(msg); closeSheet(); app.render(); return true; };
   switch (action) {
+    case 'counter': if (!app.session && G.choosePartner(app.state, el.dataset.id)) { app.meta.mode = 'owned'; app.meta.tab = 'train'; save(); saveMeta(); app.render(); window.scrollTo(0, 0); } return true;
     case 'badge': { const b = G.badges(s).find((x) => x.id === el.dataset.id); toast(`${b.name} (${b.leader}): ${b.text}${b.earned ? ' ✓' : ''}`); return true; }
     case 'bosses': bossSheet(); return true;
     case 'select-boss': G.selectBoss(s, Number(el.dataset.id)); return done();

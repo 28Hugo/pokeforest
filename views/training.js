@@ -1,6 +1,6 @@
 // Training & Gras: own Pokémon or wild encounter, Pomodoro chains, Ewigstein, berries and Knursp.
 import * as G from '../game.js';
-import { app, $, esc, art, pixel, ds, jingle, typeBadges, duration, bar, pageHead, todayStrip, info, save, saveMeta, saveSession, toast, openSheet, closeSheet, queueEvolutions, playEvolutions } from '../ui.js';
+import { app, $, esc, art, pixel, ds, jingle, typeBadges, duration, bar, pageHead, todayStrip, info, emptyState, save, saveMeta, saveSession, toast, openSheet, closeSheet, queueEvolutions, playEvolutions } from '../ui.js';
 
 const PRESETS = G.DURATION_PRESETS;
 const MODE_RAW = { owned: 'Eigenes Pokémon trainieren', wild: 'Wilde Begegnung (Nationaldex)' };
@@ -49,7 +49,7 @@ export function render(view) {
   const evolvesNow = d?.nextEvolutionName && d.toNextEvolution <= gain;
   view.innerHTML = `
     ${running ? '' : pageHead('Training', today >= goal ? `Tagesziel erreicht · ${today} Min heute` : `Noch ${goal - today} Min bis zum Tagesziel`, '', todayStrip(state, mode))}
-    ${banner ? `<div class="banner ${banner.ok ? '' : 'bad'}"><p>${esc(banner.text)}</p>${banner.recap ? '<button class="link" data-action="recap">Trainingsmoment ansehen</button>' : ''}${banner.recap && !running && lastRound() ? '<button class="link" data-action="again">↻ Gleiche Runde nochmal</button>' : ''}<button class="icon-btn small" data-action="dismiss-banner" aria-label="Hinweis schließen">×</button></div>` : ''}
+    ${banner && banner.ok && banner.recap && app.meta.lastResult && !running ? resultCard(app.meta.lastResult, state) : banner ? `<div class="banner ${banner.ok ? '' : 'bad'}"><p>${esc(banner.text)}</p>${banner.recap ? '<button class="link" data-action="recap">Trainingsmoment ansehen</button>' : ''}<button class="icon-btn small" data-action="dismiss-banner" aria-label="Hinweis schließen">×</button></div>` : ''}
     ${running ? '' : `
     <div class="mode-switch" role="tablist" aria-label="Trainingsart">
       <button role="tab" data-action="mode" data-mode="owned" aria-selected="${mode === 'owned'}" ${app.meta.pomodoroEnabled && mode !== 'owned' ? '' : ''}><strong>Eigenes Pokémon</strong><span>Lv. 1–100, Entwicklungen, Mega</span></button>
@@ -64,7 +64,7 @@ export function render(view) {
       <div class="arena">
         <p class="phase">${phaseTitle || (mode === 'wild' ? `${esc(tier.id)}e Begegnung · ${esc(tier.subtitle)}` : megaReady ? `Mega-Entwicklung bereit: ${esc(G.megaFor(partner.species).name)}` : `${esc(d?.name)} · Lv. ${d?.level} → ${projected?.level}`)}</p>
         ${poketch({ state, s, running, mode, minutes, partner, d, gain, coins, phase })}
-        <p class="muted small clock-hint" id="clock-hint">${running ? (s.strict ? 'Strenger Modus: Bleib in der App.' : 'Die Zeit läuft weiter, auch wenn du die App schließt.') : `Fertig um ${new Date(Date.now() + minutes * 60000).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`}</p>
+        ${running ? `<p class="muted small clock-hint" id="clock-hint">${s.strict ? 'Strenger Modus: Bleib in der App.' : 'Die Zeit läuft weiter, auch wenn du die App schließt.'}</p>` : ''}
         <p class="rewards"><span class="coin-dot"></span>+${coins} Münzen${mode === 'wild' ? ` · <span class="note-sun">✦ ${shiny} % Shiny</span>` : ''}${state.activeBerryBuff ? ` · ${esc(G.berryName(state.activeBerryBuff))}` : ''}${(running ? s.poffin : G.poffinKey(app.meta.poffin)) ? ' · Knursp' : ''}</p>
         ${running ? `
           <div class="row center">
@@ -118,7 +118,7 @@ export function render(view) {
             <option value="">Ohne Aufgabe</option>
             ${G.ensureJourney(state).tasks.filter((t) => !t.done).map((t) => `<option value="${t.id}" ${G.activeTask(state)?.id === t.id ? 'selected' : ''}>${esc(t.title)} · ${t.minutes} Min</option>`).join('')}
           </select></label>
-          ${running ? '' : `<form class="row" data-form="task"><input name="title" maxlength="60" placeholder="Neue Aufgabe" aria-label="Neue Aufgabe"><button class="pill quiet">+</button><button type="button" class="pill quiet" data-action="tasks">Alle</button></form>`}
+          ${running ? '' : `<form class="row" data-form="task"><input name="title" maxlength="60" placeholder="Neue Aufgabe" aria-label="Neue Aufgabe"><button class="pill quiet" aria-label="Aufgabe anlegen">+</button><button type="button" class="pill quiet" data-action="tasks">Alle</button></form>`}
           <div class="row wrap">
             <label class="field">Pause <select data-action="auto-break">${[0, 5, 10, 15].map((m) => `<option value="${m}" ${G.ensureJourney(state).autoBreakMinutes === m ? 'selected' : ''}>${m ? `${m} Min` : 'Aus'}</option>`).join('')}</select></label>
             <label class="field">Fokus-Tag <select data-action="tag" ${running ? 'disabled' : ''}>${tags.map((t) => `<option value="${t.id}" ${t.id === tag.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label>
@@ -148,7 +148,7 @@ export function render(view) {
         </div>
       </div>
     </div>
-    ${running ? '' : `<div class="start-bar"><button class="start" data-action="start">${mode === 'wild' ? `Ins hohe Gras gehen (${minutes} Min)` : `${esc(d?.name ?? 'Training')} trainieren (${minutes} Min)`}</button></div>`}`;
+    ${running ? '' : `<div class="start-bar"><button class="start" data-action="start">${mode === 'wild' ? `Ins hohe Gras gehen · ${minutes} Min` : `${esc(d?.name ?? 'Training')} trainieren · ${minutes} Min`} · bis ${new Date(Date.now() + minutes * 60000).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}</button></div>`}`;
 
   const range = $('#minutes', view);
   range?.addEventListener('input', () => { app.meta.minutes = Number(range.value); saveMeta(); $('#clock').textContent = `${String(app.meta.minutes).padStart(2, '0')}:00`; const pct = $('#lcd-pct'); if (pct) pct.textContent = `${app.meta.minutes} Min`; });
@@ -301,7 +301,7 @@ function finishRound() {
   const won = result.gym?.defeated ? G.challengeByID(result.gym.challengeID) : null;
   if (result.pension?.hatched) { jingle('hatch'); celebrate('hatch', result.pension.hatched, () => showRecap(result)); }
   else if (won) { jingle('badge'); celebrate('badge', won, () => showRecap(result)); }
-  else { if (result.levelUps.length) jingle('levelUp'); showRecap(result); }
+  else { if (result.levelUps.length) jingle('levelUp'); else if (result.reachedGoal) jingle('badge'); showRecap(result); }
   if (!app.session) releaseWakeLock();
   const pause = G.ensureJourney(app.state).autoBreakMinutes;
   if (!app.session && pause && !result.chainDone) { app.meta.breakEndsAt = Date.now() + pause * 60000; saveMeta(); }
@@ -314,7 +314,7 @@ function tasksSheet() {
     <form class="row" data-form="task"><input name="title" maxlength="60" placeholder="Neue Aufgabe" aria-label="Neue Aufgabe"><button class="pill">Anlegen</button></form>
     <div class="stack">${tasks.map((t) => `<div class="panel row task ${t.done ? 'done' : ''}"><button class="icon-btn small" data-action="task-toggle" data-id="${t.id}" aria-label="${t.done ? 'Als offen markieren' : 'Als erledigt markieren'}">${t.done ? '☑' : '☐'}</button>
       <span>${esc(t.title)}${G.activeTask(app.state)?.id === t.id ? ' <small class="note-sun">aktiv</small>' : ''}</span><small class="muted">${t.minutes} Min</small>
-      <button class="icon-btn small" data-action="task-delete" data-id="${t.id}" aria-label="Aufgabe löschen">×</button></div>`).join('') || '<p class="muted">Noch keine Aufgaben.</p>'}</div>
+      <button class="icon-btn small" data-action="task-delete" data-id="${t.id}" aria-label="Aufgabe löschen">×</button></div>`).join('') || emptyState('📝', 'Noch keine Aufgabe. Schreib oben auf, woran du arbeitest.')}</div>
     <button class="pill quiet" data-action="close">Fertig</button>`);
 }
 
@@ -433,7 +433,7 @@ export function handle(action, el) {
         <button class="pill wide" data-action="close">Weiter fokussieren</button>`);
       return true;
     case 'giveup-reason': closeSheet(); giveUp(el.dataset.id, el.dataset.id); return true;
-    case 'task-active': if (!app.session) { G.setActiveTask(state, el.dataset.id); save(); app.render(); } return true;
+    case 'task-active': if (!app.session) { const tagID = G.setActiveTask(state, el.dataset.id); if (tagID && state.tags.some((t) => t.id === tagID)) { app.meta.tagID = tagID; saveMeta(); } save(); app.render(); } return true;
     case 'tasks': tasksSheet(); return true;
     case 'task-toggle': G.toggleTask(state, el.dataset.id); save(); tasksSheet(); app.render(); return true;
     case 'task-delete': G.deleteTask(state, el.dataset.id); save(); tasksSheet(); app.render(); return true;
@@ -494,7 +494,7 @@ export function change(el) {
   switch (el.dataset.action) {
     case 'pomodoro': meta.pomodoroEnabled = el.checked; saveMeta(); app.render(); return true;
     case 'tag': meta.tagID = el.value; saveMeta(); return true;
-    case 'task': if (!app.session) { G.setActiveTask(app.state, el.value); save(); app.render(); } return true;
+    case 'task': if (!app.session) { const tagID = G.setActiveTask(app.state, el.value); if (tagID && app.state.tags.some((t) => t.id === tagID)) { app.meta.tagID = tagID; saveMeta(); } save(); app.render(); } return true;
     case 'auto-break': G.ensureJourney(app.state).autoBreakMinutes = Number(el.value); save(); return true;
     case 'hunt': if (!app.session) { G.setHuntHabitat(app.state, el.value || null); save(); app.render(); } return true;
     case 'note': meta.note = el.value; saveMeta(); return true;
@@ -504,7 +504,7 @@ export function change(el) {
 export function submit(form) {
   if (form.dataset.form === 'task') {
     const title = new FormData(form).get('title');
-    if (G.addTask(app.state, title)) { save(); toast('Aufgabe angelegt und aktiv.'); if (document.querySelector('#sheet').open) tasksSheet(); app.render(); }
+    if (G.addTask(app.state, title, app.meta.tagID ?? app.state.tags[0]?.id)) { save(); toast('Aufgabe angelegt und aktiv.'); if (document.querySelector('#sheet').open) tasksSheet(); app.render(); }
     return true;
   }
   if (form.dataset.form !== 'preset') return false;
@@ -544,3 +544,23 @@ document.addEventListener('keydown', (event) => {
   else if (G.toggleEverstone(app.session)) { saveSession(); app.render(); }
 });
 export function resume() { if (app.session?.mode === 'wild' && !app.session.wildBranches && !app.session.inBreak) loadWild(); }
+
+/** 5.10: compact result of the last round, with „Nochmal“. */
+function resultCard(r, state) {
+  const sprite = r.wild ? r.captured?.spriteID : r.partner?.spriteID;
+  const title = r.wild ? `${esc(r.captured?.formName ?? r.captured?.name ?? 'Pokémon')} gefangen!` : `${esc(r.partnerName)} hat trainiert`;
+  const xp = r.partnerXP;
+  return `<div class="panel result-card">
+    ${sprite ? `<img src="${ds(sprite, r.shiny)}" alt="">` : ''}
+    <div class="stack">
+      <div class="row wrap"><strong>${title}</strong>${r.shiny ? ' <span class="note-sun">✦</span>' : ''}${r.reachedGoal ? '<span class="goal-plaque">🏅 Tagesziel erreicht</span>' : ''}</div>
+      ${xp ? `<div class="row"><span class="small"><strong>${xp.to > xp.from ? `Lv. ${xp.from} → ${xp.to}` : `Lv. ${xp.to}`}</strong></span>${bar(xp.progressAfter)}<span class="small muted">+${xp.gained} EP</span></div>` : ''}
+      <p class="small"><span class="coin-dot"></span>+${r.coins} Münzen · ${r.minutes} Min${r.inPC ? ' · im PC' : ''}</p>
+    </div>
+    <div class="stack result-actions">
+      ${lastRound() ? '<button class="pill small" data-action="again">↻ Nochmal</button>' : ''}
+      <button class="link" data-action="recap">Details</button>
+    </div>
+    <button class="icon-btn small" data-action="dismiss-banner" aria-label="Ergebnis schließen">×</button>
+  </div>`;
+}

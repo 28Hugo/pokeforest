@@ -12,6 +12,7 @@ Eine Web-App, die denselben Spielstand wie die Mac-App nutzt. Kein Build-Schritt
 - **Shop:** Beerenbeete in Flori, Linien freischalten, Exemplare adoptieren, Beeren, Knursp-Bäckerei, Wunder-Tausch, Profilbild-Kapsel.
 - **Mehr:** PokéRadio (ein Player, Senderliste, Atmosphäre-Kacheln), Tagesziel, Erscheinungsbild, strenger Modus, Fokus-Tags, Sync.
 - **Für Einsteiger:** Tutorial mit Prof. Eibe beim ersten Start, Spielhilfe A–Z, „Neu in dieser Version“.
+- **Neu in 5.10:** Ergebnis-Karte mit „Nochmal“, Tagesziel-Plakette, Aufgaben merken ihren Tag, Pension im Heute-Streifen, neue Ereignisse markiert, Steckbrief mit Tabs, Shop-Sortierung, Tastenkürzel mit ?, besserer Kontrast und Fokus-Rahmen.
 - **Neu in 5.9:** Aufgeräumte Seiten mit ⓘ-Erklärungen, „Heute“-Streifen, Trainer in vier Bereichen, Lebensräume als Raster, Chronik, Shop-Typfilter, Geheimbasis mit Einkaufsfenster.
 - **Neu in 5.8:** Team Galaktik, Rivale Barry, Speersäule, Geheimbasis, Mitnahme, Box-Hintergründe, Sinnoh-Dex.
 - Offline nutzbar nach dem ersten Öffnen. Unter Mehr › Einstellungen lassen sich alle 1025 DS-Sprites speichern.

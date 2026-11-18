@@ -1,5 +1,5 @@
 import * as G from './game.js';
-import { app, $, esc, ds, jingle, openSheet, showTutorial, showHelp, showWhatsNew, save, saveMeta, toast, closeSheet, pokemonSheet, queueEvolutions, playEvolutions, loadAll } from './ui.js';
+import { app, $, esc, ds, jingle, openSheet, showTutorial, showHelp, showWhatsNew, showShortcuts, save, saveMeta, toast, closeSheet, pokemonSheet, queueEvolutions, playEvolutions, loadAll } from './ui.js';
 import * as Training from './views/training.js';
 import * as Safari from './views/safari.js';
 import * as Trainer from './views/trainer.js';
@@ -58,13 +58,18 @@ function common(action, el) {
     case 'tab': app.meta.tab = el.dataset.view; saveMeta(); app.render(); window.scrollTo(0, 0); return true;
     case 'sub': app.meta.sub[el.dataset.key] = el.dataset.value; saveMeta(); app.render(); return true;
     case 'close': closeSheet(); return true;
+    case 'today-more': if (G.markTodaySeen(s, app.meta.mode)) save(); return true;
+    case 'sheet-tab': app.meta.sheetTab = el.dataset.tab; saveMeta(); pokemonSheet(el.dataset.id); return true;
+    case 'shortcuts': showShortcuts(); return true;
     case 'today': {
       const kind = el.dataset.kind;
       el.closest('details')?.removeAttribute('open');
+      G.markTodaySeen(s, app.meta.mode); save();
       if (kind === 'galactic') { app.meta.tab = 'safari'; app.meta.sub.safari = 'meadow'; app.meta.habitatID = el.dataset.habitat; }
       else if (kind === 'roamer' || kind === 'outbreak') { if (!running && !app.meta.pomodoroEnabled) { app.meta.mode = 'wild'; G.setHuntHabitat(s, el.dataset.habitat); save(); } app.meta.tab = 'train'; }
       else if (kind === 'topform') { if (!running && G.choosePartner(s, el.dataset.id)) { app.meta.mode = 'owned'; save(); } app.meta.tab = 'train'; }
       else if (kind === 'rival') { app.meta.tab = 'trainer'; app.meta.sub.trainer = 'gyms'; }
+      else if (kind === 'pension') { app.meta.tab = 'safari'; app.meta.sub.safari = 'pension'; }
       saveMeta(); app.render(); window.scrollTo(0, 0); return true;
     }
     case 'inspect': pokemonSheet(el.dataset.id); return true;
@@ -174,6 +179,7 @@ app.showHelp = () => showHelp();
 document.addEventListener('keydown', (event) => {
   if (event.metaKey || event.ctrlKey || event.altKey || !app.state) return;
   if (event.target.closest?.('input, textarea, select, [contenteditable]') || document.querySelector('dialog[open]')) return;
+  if (event.key === '?') { event.preventDefault(); showShortcuts(); return; }
   const tab = ['train', 'safari', 'trainer', 'shop', 'more'][Number(event.key) - 1];
   if (tab) { app.meta.tab = tab; saveMeta(); app.render(); window.scrollTo(0, 0); }
 });

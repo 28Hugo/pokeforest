@@ -83,7 +83,7 @@ function renderSettings(body) {
     </div>
     <div class="panel stack">
       <h3>Hilfe</h3>
-      <div class="row wrap"><button class="pill quiet" data-action="tutorial">Tutorial mit Prof. Eibe</button><button class="pill quiet" data-action="help">Spielhilfe A–Z</button><button class="pill quiet" data-action="whats-new">Neu in ${esc(G.C.life.whatsNew.version)}</button></div>
+      <div class="row wrap"><button class="pill quiet" data-action="tutorial">Tutorial mit Prof. Eibe</button><button class="pill quiet" data-action="help">Spielhilfe A–Z</button><button class="pill quiet" data-action="shortcuts">Tastenkürzel</button><button class="pill quiet" data-action="whats-new">Neu in ${esc(G.C.life.whatsNew.version)}</button></div>
       <p class="small muted">Tasten 1–5 wechseln die Seiten, die Leertaste startet eine Runde.</p>
     </div>
     <div class="panel stack">

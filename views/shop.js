@@ -1,6 +1,6 @@
 // Poké-Shop: species lines, berries, Knursp, Wunder-Tausch and avatar capsules.
 import * as G from '../game.js';
-import { app, $, esc, pixel, typeBadges, num, segmented, sub, pageHead, info, save, saveMeta, toast, openSheet, closeSheet } from '../ui.js';
+import { app, $, esc, pixel, typeBadges, num, segmented, sub, pills, pageHead, info, emptyState, save, saveMeta, toast, openSheet, closeSheet } from '../ui.js';
 
 export function render(view) {
   view.innerHTML = `${pageHead('Poké-Shop', `${num(app.state.coins)} PokéMünzen`, 'So kommen neue Linien in den Shop: Du triffst ein Pokémon bei einer wilden Begegnung, dann erscheint seine Linie hier. Freischalten, und schon kannst du es trainieren. Längere Begegnungen bringen seltenere Pokémon.')}
@@ -13,11 +13,13 @@ export function render(view) {
 function renderLines(body) {
   const s = app.state;
   const query = (app.meta.shopSearch || '').toLowerCase();
-  const lines = G.availableSpecies(s).filter((x) => G.shopMatches(x, query, app.meta.shopType || ''));
+  const owned = (x) => s.pokemonRoster.some((p) => G.lineKey(p.species) === G.lineKey(x));
+  const lines = G.shopArranged(G.availableSpecies(s).filter((x) => G.shopMatches(x, query, app.meta.shopType || '')), sub('shopScope', 'all'), owned, (x) => G.isUnlocked(s, x));
   body.innerHTML = `<div class="row shop-filter"><input type="search" data-action="shop-search" placeholder="Name oder Nr." value="${esc(app.meta.shopSearch || '')}" aria-label="Linien durchsuchen">
     <select data-action="shop-type" aria-label="Nach Typ filtern"><option value="">Alle Typen</option>${G.C.types.names.map((t, i) => `<option value="${i + 1}" ${String(app.meta.shopType) === String(i + 1) ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
     <span class="small muted">${lines.length} Linien</span></div>
-    ${lines.length ? '' : '<p class="muted">Keine Linie gefunden. Ändere die Suche oder den Typ.</p>'}
+    ${pills('shopScope', G.SHOP_SCOPES)}
+    ${lines.length ? '' : emptyState('🔍', 'Keine Linie passt zu Suche, Typ und Umfang.', 'shop-reset', 'Filter zurücksetzen')}
     <div class="lines">${lines.map((x) => {
       const unlocked = G.isUnlocked(s, x); const legend = G.legendaryID(x) != null;
       const own = s.pokemonRoster.find((p) => G.lineKey(p.species) === G.lineKey(x));
@@ -74,6 +76,7 @@ export function handle(action, el) {
   const s = app.state;
   const species = () => G.availableSpecies(s).find((x) => x.id === el.dataset.id);
   switch (action) {
+    case 'shop-reset': app.meta.shopSearch = ''; app.meta.shopType = ''; app.meta.sub.shopScope = 'all'; saveMeta(); app.render(); return true;
     case 'unlock-line': {
       const x = species();
       if (x && confirm(`${x.displayName} für ${G.shopPrice(s, x)} Münzen freischalten?`)) {

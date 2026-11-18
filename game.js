@@ -1125,7 +1125,7 @@ export function completeRound(state, s, now = new Date()) {
   const pension = advancePension(state, minutes, now);
   const ripeBerries = growPlots(state, minutes);
   const tower = advanceTower(state, true);
-  const lifeNotes = [creditTask(state, minutes), advanceGalactic(state, minutes, wild, individual, now), wild ? null : rivalRound(state, minutes, individual, now), advanceSpear(state, minutes)].filter(Boolean);
+  const lifeNotes = [creditTask(state, minutes, s.tagID), advanceGalactic(state, minutes, wild, individual, now), wild ? null : rivalRound(state, minutes, individual, now), advanceSpear(state, minutes)].filter(Boolean);
   if (!wild) trainCondition(state, individual, minutes);
   const pensionTraining = trainPensionParents(state, minutes, evolutions);
   const finishedTrips = [];
@@ -1190,6 +1190,8 @@ export function completeRound(state, s, now = new Date()) {
     .map((p) => ({ name: describe(p).name, from: levelsBefore.get(p.id), to: levelFor(p.experience) }));
   const trainerAfter = trainerLevel(state);
   if (goalBefore < dailyGoal(state) && goalReached) notes.push(`Tagesziel erreicht: ${todayMinutes(state, now)} / ${dailyGoal(state)} Min`);
+  const reachedGoal = goalShouldCelebrate(goalBefore, todayMinutes(state, now), dailyGoal(state), ensureJourney(state).goalCelebratedDay, dayKey(now));
+  if (reachedGoal) state.journey.goalCelebratedDay = dayKey(now);
 
   // Pomodoro continuation
   let chainDone = false; let breakStarted = false;
@@ -1206,7 +1208,7 @@ export function completeRound(state, s, now = new Date()) {
       progressBefore: partnerBefore.progress, progressAfter: describe(individual).progress, gained: individual.experience - partnerBefore.experience } : null,
     individualID: individual.id, shared, habitatTraining, habitatBonus: ep.habitat || 0, newDig, finishedTrips, levelUps, evolutions, notes, newBadges, researchUpdates,
     raidDamage: Math.min(raidHPBefore, damage), trainerLevelUp: trainerAfter > trainerBefore ? trainerAfter : null,
-    inPC: boxOf(state, individual.id) >= 0 && wild, breakStarted, chainDone, round: s.round,
+    inPC: boxOf(state, individual.id) >= 0 && wild, breakStarted, chainDone, round: s.round, reachedGoal,
   };
 }
 
@@ -1319,6 +1321,7 @@ export function ensureJourney(state) {
   j.base ||= {}; j.base.owned ||= {}; j.base.placed ||= [];
   j.boxWallpapers ||= {}; j.abortReasons ||= {};
   j.tutorialSeen ??= false; j.autoBreakMinutes ??= 0;
+  j.seenToday ||= [];
   return j;
 }
 export const pokemonName = (dex) => C.names[dex - 1] ?? `#${dex}`;
@@ -1783,25 +1786,30 @@ export function habitatForDex(dexID) { const types = typesOf(dexID); return C.ha
 const L = () => C.life;
 // Memo-App
 export const activeTask = (state) => { const j = ensureJourney(state); return j.tasks.find((t) => t.id === j.activeTaskID && !t.done) ?? null; };
-export function addTask(state, title) {
+export function addTask(state, title, tagID = null) {
   const clean = String(title || '').trim().slice(0, L().taskMaxTitle);
   if (!clean) return false;
   const j = ensureJourney(state);
-  const task = { id: newID(), title: clean, minutes: 0, done: false };
+  const task = { id: newID(), title: clean, minutes: 0, done: false, tagID: tagID || null };
   j.tasks = [task, ...j.tasks].slice(0, L().taskMax);
   j.activeTaskID = task.id;
   return true;
 }
-export function setActiveTask(state, id) { ensureJourney(state).activeTaskID = id || null; }
+/** Returns the focus tag this task was last trained with (5.10), so the UI can bring it back. */
+export function setActiveTask(state, id) {
+  const j = ensureJourney(state); j.activeTaskID = id || null;
+  return j.tasks.find((t) => t.id === id)?.tagID ?? null;
+}
 export function toggleTask(state, id) {
   const j = ensureJourney(state); const t = j.tasks.find((x) => x.id === id);
   if (!t) return; t.done = !t.done; if (t.done && j.activeTaskID === id) j.activeTaskID = null;
 }
 export function deleteTask(state, id) { const j = ensureJourney(state); j.tasks = j.tasks.filter((t) => t.id !== id); if (j.activeTaskID === id) j.activeTaskID = null; }
-function creditTask(state, minutes) {
+function creditTask(state, minutes, tagID = null) {
   const t = activeTask(state);
   if (!t) return null;
   t.minutes += minutes;
+  if (tagID) t.tagID = tagID;
   return `Aufgabe „${t.title}“: +${minutes} Min (gesamt ${t.minutes})`;
 }
 // Team Galaktik
@@ -1941,8 +1949,8 @@ export function settleMany(state, ids) {
 export const topAbortReason = (state) => Object.entries(ensureJourney(state).abortReasons).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
 
 // MARK: 5.9 – Aufräumen (gleiche Regeln wie TidyModels.swift)
-export const TODAY_ORDER = ['galactic', 'roamer', 'outbreak', 'topform', 'rival'];
-export const TODAY_COLORS = { galactic: '#5A8AA8', roamer: '#9B6BD6', outbreak: '#3FAE5A', topform: '#F0A030', rival: '#E07A3A' };
+export const TODAY_ORDER = ['galactic', 'roamer', 'pension', 'outbreak', 'topform', 'rival'];
+export const TODAY_COLORS = { galactic: '#5A8AA8', roamer: '#9B6BD6', pension: '#D9A441', outbreak: '#3FAE5A', topform: '#F0A030', rival: '#E07A3A' };
 /** Everything special about today, most urgent first. */
 export function todayEvents(state, mode = 'owned', date = new Date()) {
   const events = [];
@@ -1951,6 +1959,8 @@ export function todayEvents(state, mode = 'owned', date = new Date()) {
   for (const r of roamersToday(state, date)) {
     if (habitatUnlocked(state, r.habitat)) events.push({ kind: 'roamer', title: `${pokemonName(r.dexID)} gesichtet`, detail: `Heute ${r.habitat.locative}`, dexID: r.dexID, habitatID: r.habitat.id });
   }
+  const egg = ensureJourney(state).pension.egg;
+  if (egg) events.push({ kind: 'pension', title: 'Ei in der Pension', detail: egg.minutesLeft <= 0 ? 'Schlüpft in der nächsten Runde' : `Noch ${egg.minutesLeft} Fokus-Min bis zum Schlüpfen` });
   const o = massOutbreak(date);
   if (habitatUnlocked(state, o.habitat)) events.push({ kind: 'outbreak', title: `Massenauftreten: ${o.name}`, detail: `Jage ${o.habitat.locative}`, dexID: o.dexID, habitatID: o.habitat.id });
   const starID = pokemonOfTheDay(state.pokemonRoster, date);
@@ -1958,6 +1968,7 @@ export function todayEvents(state, mode = 'owned', date = new Date()) {
   if (star && (star.id !== state.selectedPokemonID || mode !== 'owned')) events.push({ kind: 'topform', title: `${describe(star).name} in Topform`, detail: `+${DAY_BONUS_PERCENT} % EP als Partner`, dexID: describe(star).spriteID, pokemonID: star.id });
   const r = rival(state, date);
   if (r.active && !r.beaten) events.push({ kind: 'rival', title: 'Kampf gegen Barry läuft', detail: `${Math.max(0, rivalMaxHP(state) - r.damage)} / ${rivalMaxHP(state)} KP übrig`, dexID: rivalAce(state, date) });
+  for (const e of events) e.id = `${e.kind}|${e.title}`;
   return events.map((e, i) => [e, i]).sort((a, b) => (TODAY_ORDER.indexOf(a[0].kind) - TODAY_ORDER.indexOf(b[0].kind)) || a[1] - b[1]).map(([e]) => e);
 }
 export const TODAY_VISIBLE = 1;
@@ -1991,3 +2002,31 @@ export function shopMatches(species, query = '', type = '') {
   if (/^\d+$/.test(q)) return species.stages.some((st) => st.pokedexID === Number(q));
   return [species.displayName, lineTitle(species), ...species.stages.map((st) => st.name)].some((x) => String(x).toLowerCase().includes(q));
 }
+
+// MARK: 5.10 – Feinschliff (gleiche Regeln wie PolishTwoModels.swift)
+export const goalShouldCelebrate = (before, after, goal, celebratedDay, today) => goal > 0 && before < goal && after >= goal && celebratedDay !== today;
+const SEEN_MAX = 40;
+export const todayKey = (e, day = dayKey()) => `${day}|${e.id}`;
+export function unseenToday(state, mode = 'owned', date = new Date()) {
+  const seen = new Set(ensureJourney(state).seenToday);
+  return todayEvents(state, mode, date).filter((e) => !seen.has(todayKey(e, dayKey(date))));
+}
+export function markTodaySeen(state, mode = 'owned', date = new Date()) {
+  const j = ensureJourney(state); const day = dayKey(date);
+  const today = j.seenToday.filter((k) => k.startsWith(`${day}|`));
+  const added = todayEvents(state, mode, date).map((e) => todayKey(e, day)).filter((k) => !today.includes(k));
+  const next = [...today, ...added].slice(-SEEN_MAX);
+  const changed = next.length !== j.seenToday.length || next.some((k, i) => k !== j.seenToday[i]);
+  j.seenToday = next;
+  return changed;
+}
+export const SHOP_SCOPES = [['all', 'Alle'], ['unlocked', 'Freigeschaltet'], ['locked', 'Noch zu kaufen']];
+/** Own lines first, then unlocked ones, then the rest; order inside a group stays. */
+export function shopArranged(lines, scope, owned, unlocked) {
+  const rank = (x) => (owned(x) ? 0 : unlocked(x) ? 1 : 2);
+  return lines.map((x, i) => [x, i])
+    .filter(([x]) => scope === 'unlocked' ? unlocked(x) : scope === 'locked' ? !unlocked(x) : true)
+    .sort((a, b) => (rank(a[0]) - rank(b[0])) || a[1] - b[1]).map(([x]) => x);
+}
+export const SHORTCUTS_WEB = [['Leertaste', 'Runde starten oder Ewigstein-Pause'], ['1 – 5', 'Seiten wechseln'], ['?', 'Diese Übersicht']];
+export const digProgress = (minutesToNext) => Math.min(1, Math.max(0, (C.underground.minutesPerDig - minutesToNext) / C.underground.minutesPerDig));
