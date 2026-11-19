@@ -42,19 +42,20 @@ function renderHabitats(body) {
   const invasion = G.galacticInvasion(s);
   const pickups = G.pickupReady(s);
   body.innerHTML = `
-    ${invasion ? `<div class="panel galactic row"><strong>⚠️ Team Galaktik besetzt ${esc(invasion.name)}</strong>${info(`Die Bewohner verstecken sich und trainieren nicht. Jage dort oder trainiere einen Partner vom Typ ${invasion.types.map((t) => G.typeInfo(t).name).join(' oder ')}. Belohnung: ${G.C.life.galactic.rewardCoins} Münzen und ein Sonderbonbon.`)}${bar(G.galacticProgress(s) / G.C.life.galactic.goalMinutes, '#5A8AA8')}<span class="small muted">${G.galacticProgress(s)} / ${G.C.life.galactic.goalMinutes} Min</span></div>` : ''}
     <div class="row"><h3>Lebensräume in Sinnoh${info(`Lass PC-Pokémon an Orten wohnen, die zu ihrem Typ passen. Sie trainieren bei jeder Runde mit. Ein voller Lebensraum gibt seinen Bewohnern als Partner +${H.fullHabitatBonusPercent} % EP. Jeder bewohnte Lebensraum bringt einmal am Tag ein Fundstück.`)}</h3><span class="small muted">${total} Bewohner · ${fullCount}/${H.places.length} voll</span></div>
     ${pickups ? `<button class="pill wide" data-action="pickup">🎁 Fundstücke abholen (${pickups})</button>` : ''}
     ${(() => { const layout = G.habitatLayout(s, h.id, !!app.meta.allHabitats);
       return `<div class="habitat-chips grid" role="tablist" aria-label="Lebensräume">${layout.shown.map((x) => { const ok = G.habitatUnlocked(s, x); const n = G.residentIDs(s, x).length;
       return `<button role="tab" class="habitat-chip ${x.id === h.id ? 'on' : ''} ${ok ? '' : 'locked'}" aria-selected="${x.id === h.id}" data-action="habitat-pick" data-id="${x.id}">
         <img src="img/habitats/${x.id}.png" alt=""><span><strong>${esc(x.name)}</strong><small>${ok ? `${n}/${H.capacity}${n >= H.capacity ? ' ★' : ''}` : `ab ${num(x.requiredMinutes)} Min 🔒`}</small>
-        <i>${x.types.map((t) => `<b style="background:${G.typeInfo(t).colorHex}"></b>`).join('')}</i></span></button>`; }).join('')}
+        ${(() => { const r = G.habitatResidentsPreview(G.residentsOf(s, x).map((p) => G.describe(p).spriteID));
+          return ok && r.shown.length ? `<em class="chip-residents">${r.shown.map((id) => `<img src="${ds(id)}" alt="">`).join('')}${r.more ? `<small>+${r.more}</small>` : ''}</em>`
+            : `<i>${x.types.map((t) => `<b style="background:${G.typeInfo(t).colorHex}"></b>`).join('')}</i>`; })()}</span></button>`; }).join('')}
         ${layout.hidden || app.meta.allHabitats ? `<button class="habitat-chip more" data-action="habitats-all">${app.meta.allHabitats ? 'Weniger zeigen' : `🔒 ${layout.hidden} weitere freischaltbar`}</button>` : ''}</div>`; })()}
     <div class="habitat-scene ${open ? '' : 'locked'} time-${G.dayTime().id}">
       <img class="backdrop" src="img/habitats/${h.id}.png" alt="">
       <div class="place-sign"><strong>${esc(h.name)}</strong><small>${esc(h.place)}</small></div>
-      ${open && invasion?.id === h.id ? '<div class="galactic-sign">TEAM GALAKTIK</div>' : ''}
+      ${open && invasion?.id === h.id ? `<div class="galactic-sign" title="${esc(`Die Bewohner verstecken sich und trainieren nicht. Jage hier oder trainiere einen passenden Partner. Belohnung: ${G.C.life.galactic.rewardCoins} Münzen und ein Sonderbonbon.`)}">TEAM GALAKTIK<small>${G.galacticSignText(G.galacticProgress(s), G.C.life.galactic.goalMinutes)} zum Vertreiben</small><span class="sign-bar"><i style="width:${Math.min(100, Math.round(G.galacticProgress(s) / G.C.life.galactic.goalMinutes * 100))}%"></i></span></div>` : ''}
       ${open && G.roamerIn(s, h) ? `<div class="roamer-sign"><img src="${ds(G.roamerIn(s, h))}" alt="">Gesichtet: ${esc(G.pokemonName(G.roamerIn(s, h)))}</div>` : ''}
       ${open && outbreak.habitatID === h.id ? `<div class="outbreak-sign"><img src="${ds(outbreak.dexID)}" alt="">Massenauftreten: ${esc(outbreak.name)}</div>` : ''}
       ${H.platforms.map((_, i) => { const p = residents[i];
@@ -67,16 +68,11 @@ function renderHabitats(body) {
     <div class="panel stack">
       <div class="row">${typeBadges(h.types)}${info(`${h.flavor} Bewohner bekommen ${H.residentSharePercent} % deiner Fokus-Minuten als EP. Ist der Lebensraum voll, bekommen Partner vom Typ ${h.types.map((t) => G.typeInfo(t).name).join(' oder ')} +${H.fullHabitatBonusPercent} % EP.${(s.claimedHabitatIDs || []).includes(h.id) ? '' : ` Beim ersten Mal voll: +${H.firstFillReward} PokéMünzen.`} Pokédex dieser Typen: ${dex.owned} / ${dex.total}.`)}</div>
       <div class="row small"><strong>Bewohner</strong><span>${residents.length} / ${H.capacity}</span></div>
-      ${bar(residents.length / H.capacity, full ? 'var(--sun)' : null)}
+      <div class="resident-slots">${Array.from({ length: H.capacity }, (_, i) => residents[i]).map((p) => { if (!p) return `<button class="resident-slot empty" data-action="habitat-add" ${open ? '' : 'disabled'} aria-label="Freier Platz: Pokémon einziehen lassen">+</button>`;
+        const d = G.describe(p); return `<button class="resident-slot" data-action="inspect" data-id="${p.id}" title="${esc(d.name)} · Lv. ${d.level}" aria-label="${esc(d.name)}, Level ${d.level}"><img src="${ds(d.spriteID, p.isShiny)}" alt=""><small>Lv. ${d.level}</small></button>`; }).join('')}</div>
       <p class="small ${full ? 'note-sun' : 'muted'}">${full ? '★ Voll' : '☆ Voll gibt'} +${H.fullHabitatBonusPercent} % EP${partner && boosted?.id === h.id ? ` · ${esc(G.describe(partner).name)} profitiert` : ''}</p>
-      <button class="pill" data-action="habitat-add" ${!open || full ? 'disabled' : ''}>Pokémon einziehen lassen</button>
       ${open && !full && fitting ? `<button class="pill quiet" data-action="habitat-auto">✨ Passende einziehen lassen (${Math.min(fitting, H.capacity - residents.length)})</button>` : ''}
     </div>
-    ${residents.length ? `<div class="stack">${residents.map((p) => { const d = G.describe(p);
-      return `<div class="panel resident-row"><img src="${ds(d.spriteID, p.isShiny)}" alt="">
-        <div><strong>${esc(d.name)}</strong> <span class="small muted">Lv. ${d.level}</span>${typeBadges(G.pokemonTypes(p), true)}</div>
-        <button class="pill quiet" data-action="inspect" data-id="${p.id}">Steckbrief</button>
-        <button class="icon-btn small" data-action="habitat-leave" data-id="${p.id}" aria-label="${esc(d.name)} zurück in den PC">↩</button></div>`; }).join('')}</div>` : ''}
 `;
 }
 function habitatPicker() {
@@ -118,17 +114,18 @@ function renderPension(body) {
           <button class="link" data-action="pension-leave" data-id="${p.id}">Abholen</button></div>`; }).join('')}
     </div>
     <div class="panel egg-panel">
-      ${egg ? `<div class="egg" style="--wobble:${(4 + 8 * G.eggProgress(egg)).toFixed(1)}deg;--speed:${Math.max(0.25, 1.2 - G.eggProgress(egg)).toFixed(2)}s" aria-hidden="true"></div>
+      ${egg ? `<div class="egg ${G.eggWobbles(egg.minutesLeft) ? '' : 'calm'}" style="--wobble:${(4 + 8 * G.eggProgress(egg)).toFixed(1)}deg;--speed:${Math.max(0.25, 1.2 - G.eggProgress(egg)).toFixed(2)}s" aria-hidden="true"></div>
         <div><h3>Ein Ei</h3><p class="small">${esc(G.eggStatus(egg))}</p>${bar(G.eggProgress(egg), 'var(--sun)')}<p class="small muted">Noch ${Math.max(0, egg.minutesLeft)} Fokus-Minuten</p></div>`
       : parents.length >= P.capacity ? `<div><h3>Die beiden verstehen sich gut.</h3>${bar(j.pension.minuteBank / P.eggMinutes, '#EB85C7')}<p class="small muted">Ei in ${P.eggMinutes - j.pension.minuteBank} Fokus-Minuten</p></div>`
-      : `<div><h3>Noch kein Paar</h3><p class="small muted">Das Ei ist von der Linie eines der beiden. Mit einem Shiny-Elternteil ist die Shiny-Chance doppelt so hoch.</p></div>`}
+      : `<div><h3>Noch kein Paar</h3><p class="small muted">Gib zwei Pokémon ab. Das Ei stammt von einem der beiden.</p></div>`}
+      ${app.meta.lastHatch ? `<div class="hatch-pop"><span class="shell l"></span><span class="shell r"></span><img src="${ds(app.meta.lastHatch.spriteID, app.meta.lastHatch.shiny)}" alt=""><small class="note-share">${esc(app.meta.lastHatch.name)}${app.meta.lastHatch.shiny ? ' ✨' : ''} ist geschlüpft!</small></div>` : ''}
     </div>`;
 }
 function pensionPicker() {
   const s = app.state;
   const list = G.pensionCandidates(s, !!app.session);
   openSheet(`<h2>Wen gibst du in die Pension?</h2>
-    <p class="small muted">Pension-Pokémon wohnen im PC und trainieren nicht, bis du sie abholst. Legendäre Pokémon legen keine Eier.</p>
+    <p class="small muted">Pension-Pokémon trainieren nicht, bis du sie abholst. Legendäre legen keine Eier.</p>
     ${list.length ? `<div class="stack">${list.map((p) => { const d = G.describe(p);
       return `<div class="panel resident-row"><img src="${ds(d.spriteID, p.isShiny)}" alt="">
         <div><strong>${esc(d.name)}</strong> <span class="small muted">Lv. ${d.level}${s.teamPokemonIDs.includes(p.id) ? ' · im Team' : ''}</span>${typeBadges(G.pokemonTypes(p), true)}</div>
@@ -165,8 +162,9 @@ function renderDig(body) {
   } else {
     const r = app.meta.digResult;
     content = `${r ? `<div class="panel"><h3>${r.collapsed ? 'Die Wand ist eingestürzt!' : 'Grabung beendet'}</h3><p>${esc(G.digSummary(r))}</p>${r.fossils.length ? '<p class="small muted">Deine Fossil-Pokémon warten im PC.</p>' : ''}</div>` : ''}
-      ${charges > 0 ? '<button class="pill wide" data-action="dig-start">Grabung starten</button>'
-        : `<div class="panel stack"><strong>⏳ Nächste Grabung in ${G.minutesToNextDig(s)} Fokus-Minuten</strong>${bar(G.digProgress(G.minutesToNextDig(s)), '#9A7448')}</div>`}
+      <div class="panel stack"><div class="dig-idle ${charges > 0 ? 'ready' : ''}" aria-hidden="true"><i></i><i></i><i></i><b>⛏</b></div>
+        ${charges > 0 ? '<strong>Die Wand wartet.</strong><button class="pill wide" data-action="dig-start">Grabung starten</button>'
+        : `<strong>⏳ Nächste Grabung in ${G.minutesToNextDig(s)} Fokus-Minuten</strong>${bar(G.digProgress(G.minutesToNextDig(s)), '#9A7448')}`}</div>
       ${bagPanel(s)}`;
   }
   body.innerHTML = `
@@ -179,8 +177,8 @@ function renderDig(body) {
 
 function bagPanel(s) {
   const items = [['sonderbonbon', 'Sonderbonbon', '#7A9AE8'], ...G.C.zone.stones.map((st) => [st.id, st.name, st.colorHex])].filter(([id]) => G.itemCount(s, id) > 0);
-  return `<div class="panel"><h3>Beutel</h3>${items.length ? `<div class="row wrap">${items.map(([id, name, c]) => `<span class="chip" style="background:${c}33">${esc(name)} × ${G.itemCount(s, id)}</span>`).join('')}</div><p class="small muted">Benutzen kannst du sie im Steckbrief eines Pokémon.</p>`
-    : '<p class="small muted">Noch leer. Steine findest du im Untergrund, Sonderbonbons im Kampfpunkte-Laden.</p>'}</div>`;
+  return `<div class="panel"><h3>Beutel</h3>${items.length ? `<div class="bag-grid">${items.map(([id, name, c]) => `<div class="bag-tile" style="--c:${c}" title="${esc(name)} × ${G.itemCount(s, id)}"><img src="${G.itemSpriteURL(id)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'◆'}))"><small>${esc(name)}</small><b>×${G.itemCount(s, id)}</b></div>`).join('')}</div><p class="small muted">Benutzen im Steckbrief eines Pokémon.</p>`
+    : emptyState(G.EMPTY_MASCOT.bag, 'Noch leer. Steine findest du hier, Sonderbonbons im Kampfpunkte-Laden.')}</div>`;
 }
 
 // MARK: Team & PC
@@ -315,7 +313,7 @@ function renderLog(body) {
       <div class="entry ${t.survived ? '' : 'failed'}"><img src="${pixel(G.entrySprite(t), t.isShiny)}" alt="" loading="lazy">
         <div><strong>${esc(G.entryName(t))}</strong><p class="small muted">${G.fromSwiftDate(t.timestamp).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })} · ${t.durationMinutes} Min · <span class="dot" style="background:${t.tagColorHex}"></span>${esc(t.tagName)}${t.wasWildEncounter ? ' · Wild' : ''}</p>
         <p class="small">${esc(t.note)}</p></div>
-        <span class="small ${t.survived ? '' : 'bad'}">${t.survived ? `+${t.coinsEarned}` : 'Geflohen'}</span></div>`).join('') || (query || shiny ? emptyState('🔍', 'Kein Eintrag passt zur Suche.', 'log-clear', 'Suche leeren') : emptyState('📖', 'Noch keine Einträge. Deine Runden landen hier.', 'tab', 'Zum Training', 'data-view="train"'))}</div>
+        <span class="small ${t.survived ? '' : 'bad'}">${t.survived ? `+${t.coinsEarned}` : 'Geflohen'}</span></div>`).join('') || (query || shiny ? emptyState(G.EMPTY_MASCOT.search, 'Kein Eintrag passt zur Suche.', 'log-clear', 'Suche leeren') : emptyState(G.EMPTY_MASCOT.chronicle, 'Noch keine Einträge. Deine Runden landen hier.', 'tab', 'Zum Training', 'data-view="train"'))}</div>
     ${list.length > limit ? `<button class="pill quiet wide" data-action="log-more">Weitere ${Math.min(20, list.length - limit)} anzeigen</button>` : ''}`;
 }
 

@@ -62,10 +62,9 @@ export function render(view) {
     </div>` : ''}
     <div class="train-layout">
       <div class="arena">
-        <p class="phase">${phaseTitle || (mode === 'wild' ? `${esc(tier.id)}e Begegnung · ${esc(tier.subtitle)}` : megaReady ? `Mega-Entwicklung bereit: ${esc(G.megaFor(partner.species).name)}` : `${esc(d?.name)} · Lv. ${d?.level} → ${projected?.level}`)}</p>
-        ${poketch({ state, s, running, mode, minutes, partner, d, gain, coins, phase })}
+        ${G.showsStageLine(phase === 'break', phase === 'pause', false) ? `<p class="phase">${phaseTitle}</p>` : megaReady && !running ? `<p class="phase">Mega-Entwicklung bereit: ${esc(G.megaFor(partner.species).name)}</p>` : ''}
+        ${poketch({ state, s, running, mode, minutes, partner, d, gain, coins, phase, shiny, projected, evolvesNow })}
         ${running ? `<p class="muted small clock-hint" id="clock-hint">${s.strict ? 'Strenger Modus: Bleib in der App.' : 'Die Zeit läuft weiter, auch wenn du die App schließt.'}</p>` : ''}
-        <p class="rewards"><span class="coin-dot"></span>+${coins} Münzen${mode === 'wild' ? ` · <span class="note-sun">✦ ${shiny} % Shiny</span>` : ''}${state.activeBerryBuff ? ` · ${esc(G.berryName(state.activeBerryBuff))}` : ''}${(running ? s.poffin : G.poffinKey(app.meta.poffin)) ? ' · Knursp' : ''}</p>
         ${running ? `
           <div class="row center">
             ${s.inBreak ? '' : `<button class="pill quiet" data-action="everstone" ${s.everstoneUsed && !s.pausedUntil ? 'disabled' : ''}>${s.pausedUntil ? 'Weiter trainieren' : s.everstoneUsed ? 'Ewigstein verbraucht' : 'Ewigstein-Pause (3 Min)'}</button>`}
@@ -73,7 +72,7 @@ export function render(view) {
           </div>` : app.meta.pomodoroEnabled ? `
           <p class="small muted">Pomodoro-Kette: ${G.normalizePlan(app.meta.pomodoro).rounds} × ${G.normalizePlan(app.meta.pomodoro).focusMinutes} Min, ${G.normalizePlan(app.meta.pomodoro).breakMinutes} Min Pause</p>` : `
           <div class="durations" role="group" aria-label="Dauer">
-            ${PRESETS.map((m) => `<button class="chip" data-action="minutes" data-minutes="${m}" aria-pressed="${m === minutes}">${m} Min</button>`).join('')}
+            ${PRESETS.map((m) => `<button class="chip" data-action="minutes" data-minutes="${m}" aria-pressed="${m === minutes}" title="${esc(chipPreview(state, partner, d, m))}">${m} Min</button>`).join('')}
             <button class="chip" data-action="custom-time" aria-pressed="${G.durationShowsSlider(minutes, app.meta.customTime)}" title="Freie Zeit von 5 bis 180 Minuten">${PRESETS.includes(minutes) ? 'Eigene' : `${minutes} Min`}</button>
           </div>
           ${G.durationShowsSlider(minutes, app.meta.customTime) ? `<input type="range" min="5" max="180" step="5" value="${minutes}" id="minutes" aria-label="Dauer in Minuten">` : ''}`}
@@ -176,7 +175,16 @@ function clockHands(date = new Date()) {
   return { h: (h + m / 60) * 30, m: (m + sec / 60) * 6, s: sec * 6 };
 }
 const lcdBar = (fraction, id = '') => `<div class="lcd-bar" ${id ? `id="${id}"` : ''}>${Array.from({ length: 20 }, (_, i) => `<i class="${i < Math.round(fraction * 20) ? 'on' : ''}"></i>`).join('')}</div>`;
-function poketch({ state, s, running, mode, minutes, partner, d, gain, coins, phase }) {
+/** 5.12: what a round of this length would bring the partner (hover on a duration chip). */
+function chipPreview(state, partner, d, m) {
+  if (app.meta.mode !== 'owned' || !partner || !d || d.maxLevel) return `${m} Minuten`;
+  const ep = G.partnerEP(state, { ...previewSession(), minutes: m });
+  const gain = Math.min(ep.base + ep.bonus, G.threshold(100) - partner.experience);
+  const after = G.describe({ ...partner, experience: partner.experience + gain });
+  return G.durationPreviewText(gain, d.level, after.level, d.nextEvolutionName && d.toNextEvolution <= gain ? d.nextEvolutionName : null);
+}
+let flickerNext = null;
+function poketch({ state, s, running, mode, minutes, partner, d, gain, coins, phase, shiny, projected, evolvesNow }) {
   const appID = visibleApps().some(([id]) => id === app.meta.poketchApp) ? app.meta.poketchApp : 'timer';
   let screen;
   if (appID === 'pedometer') {
@@ -218,17 +226,19 @@ function poketch({ state, s, running, mode, minutes, partner, d, gain, coins, ph
         <span class="lcd-unit">${tod.id === 'night' ? 'Geister unterwegs' : tod.id === 'morning' ? 'Käfer unterwegs' : 'Alle unterwegs'}</span></div>`;
   } else {
     const breakEnd = !running && app.meta.breakEndsAt > Date.now() ? new Date(app.meta.breakEndsAt) : null;
-    const label = breakEnd ? `Pause bis ${breakEnd.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}` : !running ? (mode === 'wild' ? 'Bereit · Wild' : 'Bereit') : phase === 'break' ? `Pause · ${s.round}/${s.pomodoro.rounds}` : phase === 'pause' ? 'Ewigstein' : s.pomodoro ? `Fokus · ${s.round}/${s.pomodoro.rounds}` : 'Fokus läuft';
+    const extras = [state.activeBerryBuff && G.berryName(state.activeBerryBuff), G.poffinKey(app.meta.poffin) && 'Knursp'].filter(Boolean).join(' · ');
+    const label = breakEnd ? `Pause bis ${breakEnd.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}` : !running ? G.poketchReadyLabel(mode === 'wild', extras || null) : phase === 'break' ? `Pause · ${s.round}/${s.pomodoro.rounds}` : phase === 'pause' ? 'Ewigstein' : s.pomodoro ? `Fokus · ${s.round}/${s.pomodoro.rounds}` : 'Fokus läuft';
     const hunt = G.huntHabitat(state);
-    screen = `<div class="lcd-row"><span>${label}</span><span id="lcd-pct">${running ? '0 %' : `${minutes} Min`}</span></div>
+    screen = `<div class="lcd-row"><span>${label}</span><span id="lcd-pct">${G.poketchTopRight(running, 0, coins)}</span></div>
       <div class="lcd-main">${mode === 'wild' ? '<div class="lcd-ball" aria-hidden="true"></div>'
         : `<button class="lcd-sprite" data-action="tab" data-view="safari" ${running ? 'disabled' : ''} aria-label="Partner im Team wechseln"><img class="lcd-sprite-img ${running && phase === 'focus' ? 'hop' : ''}" src="${ds(d?.spriteID ?? 1, partner?.isShiny)}" alt="${esc(d?.name)}"></button>`}
         <div class="lcd-digits" id="clock">${String(minutes).padStart(2, '0')}:00</div></div>
       ${lcdBar(0, 'lcd-bar')}
-      <div class="lcd-row"><span>${mode === 'wild' ? (G.radarChain(state) ? `Radar-Kette ${G.radarChain(state)}` : `Jagd: ${esc(hunt?.name ?? 'überall')}`) : G.activeChallenge(state) ? `Arena ${esc(G.activeChallenge(state).leader)}: ${G.gymHPLeft(state)} KP` : `${esc(d?.name)} Lv. ${d?.level}`}</span><span>${mode === 'wild' ? `+${coins} Münzen` : `+${gain} EP`}</span></div>`;
+      <div class="lcd-row"><span>${mode === 'wild' ? (G.radarChain(state) ? `Radar-Kette ${G.radarChain(state)}` : `Jagd: ${esc(hunt?.name ?? 'überall')}`) : G.activeChallenge(state) ? `Arena ${esc(G.activeChallenge(state).leader)}: ${G.gymHPLeft(state)} KP` : esc(G.poketchPartnerLine(d?.name ?? '', d?.level ?? 1, projected?.level ?? d?.level ?? 1, evolvesNow ? d.nextEvolutionName : null))}</span><span>${G.poketchBottomRight(mode === 'wild', gain, shiny)}</span></div>`;
   }
+  const flicker = flickerNext; flickerNext = null;
   return `<div class="poketch">
-    <div class="poketch-body"><div class="lcd" aria-live="off">${screen}</div></div>
+    <div class="poketch-body"><div class="lcd ${flicker ? `lcd-${flicker}` : ''}" aria-live="off">${screen}</div></div>
     <div class="poketch-side"><button class="poketch-button" data-action="poketch-app" aria-label="Pokétch-App wechseln, jetzt ${POKETCH_APPS.find(([id]) => id === appID)[1]}"></button>
       ${visibleApps().map(([id]) => `<span class="poketch-dot ${id === appID ? 'on' : ''}"></span>`).join('')}</div>
   </div>`;
@@ -238,7 +248,7 @@ function poketch({ state, s, running, mode, minutes, partner, d, gain, coins, ph
 function startTicker() {
   clearInterval(ticker);
   if (!app.session) {
-    document.title = 'PokéForest';
+    document.title = G.remainingTitle(0, false);
     if (app.meta.poketchApp === 'clock') ticker = setInterval(updateClockHands, 1000);
     return;
   }
@@ -257,7 +267,7 @@ function startTicker() {
     document.querySelectorAll('#lcd-bar i').forEach((seg, i) => seg.classList.toggle('on', i < filled));
     const pct = $('#lcd-pct');
     if (pct) pct.textContent = `${Math.round((1 - left / total) * 100)} %`;
-    document.title = `${text} · PokéForest`;
+    document.title = G.remainingTitle(left, true);
     updateClockHands();
   };
   update();
@@ -290,6 +300,7 @@ function start() {
   saveSession(); save();
   if (session.mode === 'wild') loadWild();
   requestWakeLock();
+  flickerNext = 'on';
   app.render();
 }
 
@@ -308,13 +319,31 @@ function finishRound() {
   app.meta.messages = G.addMessage(app.meta.messages || [], app.meta.banner.text); app.meta.unread = Math.min((app.meta.unread || 0) + 1, G.MESSAGE_MAX);
   saveMeta();
   const won = result.gym?.defeated ? G.challengeByID(result.gym.challengeID) : null;
+  if (result.pension?.foundEgg) { delete app.meta.lastHatch; saveMeta(); }
+  if (result.pension?.hatched) { const hd = G.describe(result.pension.hatched); app.meta.lastHatch = { spriteID: hd.spriteID, shiny: !!result.pension.hatched.isShiny, name: hd.name }; saveMeta(); }
   if (result.pension?.hatched) { jingle('hatch'); celebrate('hatch', result.pension.hatched, () => showRecap(result)); }
   else if (won) { jingle('badge'); celebrate('badge', won, () => showRecap(result)); }
   else { if (result.levelUps.length) jingle('levelUp'); else if (result.reachedGoal) jingle('badge'); showRecap(result); }
   if (!app.session) releaseWakeLock();
   const pause = G.ensureJourney(app.state).autoBreakMinutes;
   if (!app.session && pause && !result.chainDone) { app.meta.breakEndsAt = Date.now() + pause * 60000; saveMeta(); }
+  flickerNext = 'off';
+  // 5.12: a short level-up moment for the partner.
+  const up = result.wild ? null : result.levelUps.find((l) => l.name === result.partnerName);
+  if (up) levelUpToast(G.levelUpMoment(up.name, result.partner?.spriteID ?? 1, !!G.findPokemon(app.state, result.individualID)?.isShiny, up.from, up.to));
   app.render();
+}
+
+function levelUpToast(moment) {
+  if (!moment) return;
+  document.querySelector('.levelup')?.remove();
+  const el = document.createElement('div');
+  el.className = 'levelup';
+  el.setAttribute('role', 'status');
+  el.innerHTML = `<img src="${ds(moment.spriteID, moment.isShiny)}" alt=""><div><small>Level-up!</small><strong>${esc(moment.text)}</strong></div>`;
+  document.body.append(el);
+  setTimeout(() => el.classList.add('out'), G.LEVEL_UP_SECONDS * 1000);
+  setTimeout(() => el.remove(), G.LEVEL_UP_SECONDS * 1000 + 400);
 }
 
 function tasksSheet() {
@@ -323,7 +352,7 @@ function tasksSheet() {
     <form class="row" data-form="task"><input name="title" maxlength="60" placeholder="Neue Aufgabe" aria-label="Neue Aufgabe"><button class="pill">Anlegen</button></form>
     <div class="stack">${tasks.map((t) => `<div class="panel row task ${t.done ? 'done' : ''}"><button class="icon-btn small" data-action="task-toggle" data-id="${t.id}" aria-label="${t.done ? 'Als offen markieren' : 'Als erledigt markieren'}">${t.done ? '☑' : '☐'}</button>
       <span>${esc(t.title)}${G.activeTask(app.state)?.id === t.id ? ' <small class="note-sun">aktiv</small>' : ''}</span><small class="muted">${t.minutes} Min</small>
-      <button class="icon-btn small" data-action="task-delete" data-id="${t.id}" aria-label="Aufgabe löschen">×</button></div>`).join('') || emptyState('📝', 'Noch keine Aufgabe. Schreib oben auf, woran du arbeitest.')}</div>
+      <button class="icon-btn small" data-action="task-delete" data-id="${t.id}" aria-label="Aufgabe löschen">×</button></div>`).join('') || emptyState(G.EMPTY_MASCOT.tasks, 'Noch keine Aufgabe. Schreib oben auf, woran du arbeitest.')}</div>
     <button class="pill quiet" data-action="close">Fertig</button>`);
 }
 

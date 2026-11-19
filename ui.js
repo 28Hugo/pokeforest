@@ -63,7 +63,8 @@ export const pills = (key, options, fallback = options[0][0]) => {
 };
 export const bell = () => `<details class="bell"><summary data-action="bell" aria-label="Meldungen${app.meta.unread ? `, ${app.meta.unread} neu` : ''}" title="Meldungen">🔔${app.meta.unread ? `<b>${app.meta.unread}</b>` : ''}</summary>
   <div class="bell-list"><strong>Meldungen</strong>${(app.meta.messages || []).map((m) => `<p class="small">${esc(m)}</p>`).join('') || '<p class="small muted">Noch nichts Neues.</p>'}</div></details>`;
-export const emptyState = (icon, text, action = '', label = '', extra = '') => `<div class="empty-state"><span aria-hidden="true">${icon}</span><p>${esc(text)}</p>${action ? `<button class="pill quiet small" data-action="${action}" ${extra}>${esc(label)}</button>` : ''}</div>`;
+/** 5.12: a number as icon shows that Pokémon asleep instead of an emoji. */
+export const emptyState = (icon, text, action = '', label = '', extra = '') => `<div class="empty-state">${typeof icon === 'number' ? `<span class="mascot" aria-hidden="true"><img src="${ds(icon)}" alt=""><i>z z</i></span>` : `<span aria-hidden="true">${icon}</span>`}<p>${esc(text)}</p>${action ? `<button class="pill quiet small" data-action="${action}" ${extra}>${esc(label)}</button>` : ''}</div>`;
 export function showShortcuts() {
   openSheet(`<h2>Tastenkürzel</h2><dl class="shortcuts">${G.SHORTCUTS_WEB.map(([k, t]) => `<dt><kbd>${esc(k)}</kbd></dt><dd>${esc(t)}</dd>`).join('')}</dl>
     <p class="small muted">Die Leertaste wirkt nur auf der Training-Seite und nicht in Eingabefeldern.</p><button class="pill" data-action="close">Fertig</button>`);
@@ -76,7 +77,7 @@ export function todayStrip(state, mode) {
   const more = events.length - G.TODAY_VISIBLE;
   const unseen = new Set(G.unseenToday(state, mode).map((e) => e.id));
   const hiddenNew = events.slice(G.TODAY_VISIBLE).some((e) => unseen.has(e.id));
-  return `<div class="today">${events.slice(0, G.TODAY_VISIBLE).map((e) => todayChip(e, unseen.has(e.id))).join('')}${more > 0 ? `<details class="today-more"><summary data-action="today-more">+${more} weitere${hiddenNew ? ' <i class="new-dot" aria-label="neu"></i>' : ''}</summary><div class="today-list">${events.map((e) => todayChip(e, unseen.has(e.id))).join('')}</div></details>` : ''}</div>`;
+  return `<div class="today">${events.slice(0, G.TODAY_VISIBLE).map((e) => todayChip(e, unseen.has(e.id))).join('')}${more > 0 ? `<details class="today-more"><summary data-action="today-more" class="${hiddenNew ? 'has-new' : ''}" title="${more} weitere Ereignisse heute" aria-label="${more} weitere Ereignisse">+${more}${hiddenNew ? ' <i class="new-dot" aria-label="neu"></i>' : ''}</summary><div class="today-list">${events.map((e) => todayChip(e, unseen.has(e.id))).join('')}</div></details>` : ''}</div>`;
 }
 
 function read(key) { try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } }

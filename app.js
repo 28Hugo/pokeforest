@@ -9,11 +9,25 @@ import * as More from './views/more.js';
 const VIEWS = { train: Training, safari: Safari, trainer: Trainer, shop: Shop, more: More };
 const MODULES = [Training, Safari, Trainer, Shop, More];
 
+/** 5.12: the coin counter counts up and down instead of jumping. */
+let shownCoins = null;
+function countCoins(to) {
+  const el = $('#coins');
+  if (to == null) { el.textContent = ''; shownCoins = null; return; }
+  const from = shownCoins;
+  shownCoins = to;
+  if (from == null || from === to || matchMedia('(prefers-reduced-motion: reduce)').matches) { el.textContent = String(to); return; }
+  el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
+  const start = performance.now();
+  const step = (t) => { if (shownCoins !== to) return; const k = Math.min(1, (t - start) / 600); el.textContent = String(Math.round(from + (to - from) * (1 - (1 - k) ** 3))); if (k < 1) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+}
+
 app.render = function render() {
   const tab = app.state ? (app.meta.tab in VIEWS ? app.meta.tab : 'train') : 'train';
   document.querySelectorAll('.tabbar button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.view === tab)));
   const s = app.state;
-  $('#coins').textContent = s ? String(s.coins) : '';
+  countCoins(s ? s.coins : null);
   $('#coins').title = s ? `${s.coins} PokéMünzen` : '';
   $('#sync-dot').textContent = s ? (!app.meta.exportedAt ? 'Nicht gesichert' : app.meta.changedAt > app.meta.exportedAt ? '● Nicht gesichert' : 'Gesichert') : '';
   $('#goal').innerHTML = s ? `<span style="width:${Math.round(Math.min(1, G.todayMinutes(s) / G.dailyGoal(s)) * 100)}%"></span>` : '';

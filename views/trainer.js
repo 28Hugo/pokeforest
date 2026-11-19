@@ -20,7 +20,7 @@ export function render(view) {
         ${bar(progress, rank.colorHex)}<p class="small muted">${num(G.trainerThreshold(level + 1) - xp)} XP bis zum nächsten Level</p></div>
     </div>
     ${(() => { const goal = G.nextGoal(s); return goal ? `<div class="panel next-goal"><span class="goal-icon" aria-hidden="true">${goal.icon}</span>
-      <div class="stack"><small class="muted">Nächstes Ziel</small><strong>${esc(goal.title)}</strong>${goal.progress != null ? bar(goal.progress) : ''}<small class="muted">${esc(goal.detail)}</small></div>
+      <div class="stack"><small class="muted">Nächstes Ziel</small><strong>${esc(goal.title)}</strong>${goal.progress != null ? bar(goal.progress, G.TONE.progress) : ''}<small class="muted">${esc(goal.detail)}</small></div>
       <button class="pill" data-action="goal" data-goal="${goal.action}" ${goal.action === 'train' && app.session ? 'disabled' : ''}>${goal.action === 'train' ? 'Zum Training' : 'Ansehen'}</button></div>` : ''; })()}
     <div class="segmented" role="tablist">${G.TRAINER_GROUPS.map((g) => { const ready = g.id === 'battles' ? G.readyWeeklyCount(s) : 0;
       return `<button role="tab" data-action="sub" data-key="trainer" data-value="${g.subs[0][0]}" aria-selected="${g.id === group.id}">${esc(g.title)}${ready ? ` (${ready})` : ''}</button>`; }).join('')}</div>
@@ -62,12 +62,12 @@ function renderGyms(body) {
         <div><h3>${esc(c.title)} ${esc(c.leader)}</h3><p class="small muted">${esc(c.place)}${c.badgeName ? ` · ${esc(c.badgeName)}` : ''}</p></div>
         <p class="quote">„${esc(c.quote)}“</p>
         <p class="small"><strong>${esc(G.pokemonName(c.aceDexID))}</strong> ${typeBadges(G.challengeTypes(c), true)}</p>
-        <div class="row small"><strong class="note-sun">KP</strong><span>${hp} / ${max}</span></div>
-        ${bar(hp / Math.max(1, max), hp / max < 0.2 ? '#E3463B' : hp / max < 0.5 ? '#F5C542' : '#47C77A')}
+        <div class="row small"><strong style="color:${G.TONE.opponent}">KP</strong><span>${hp} / ${max}</span></div>
+        ${bar(hp / Math.max(1, max), G.TONE.opponent)}
         ${partner ? `<p class="small ${m === 'super' ? 'note-share' : m === 'weak' ? 'note-sun' : 'muted'}">${esc(G.describe(partner).name)}: ${G.SHORT_MATCHUP[m]}</p>` : ''}
         <p class="small muted">Schwächen: ${G.weaknesses(G.challengeTypes(c)).map((t) => G.typeInfo(t).name).join(', ')}</p>
         <div class="row wrap">
-          ${active ? `<button class="pill" data-action="tab" data-view="train">Zum Training</button><button class="pill quiet" data-action="leave-gym" ${running ? 'disabled' : ''}>Kampf verlassen</button>`
+          ${active ? `${G.gymCardShowsTrainButton(G.nextGoal(s)?.action === 'train') ? '<button class="pill" data-action="tab" data-view="train">Zum Training</button>' : ''}<button class="pill quiet" data-action="leave-gym" ${running ? 'disabled' : ''}>Kampf verlassen</button>`
             : `<button class="pill" data-action="challenge" data-id="${c.id}" ${running ? 'disabled' : ''}>Herausfordern</button>`}
           ${counter && counter.id !== partner?.id ? `<button class="pill quiet" data-action="counter" data-id="${counter.id}" ${running ? 'disabled' : ''} title="Macht es zum Partner und öffnet das Training">Konter: ${esc(G.describe(counter).name)} Lv. ${G.describe(counter).level}</button>` : ''}
         </div>
@@ -109,7 +109,7 @@ function renderZone(body) {
       <p class="small muted">Benutzen kannst du sie im Steckbrief eines Pokémon.</p>` : '<p class="small muted">Noch leer. Steine findest du im Untergrund, Sonderbonbons im Kampfpunkte-Laden.</p>'}
     <h3>Wochen-Quests <span class="small muted">${G.weekKey()}</span></h3>
     <div class="stack">${Z.weekly.map((q) => { const n = G.weeklyProgress(s, q.id); const claimed = G.weeklyClaimed(s, q.id);
-      return `<div class="panel row"><div><strong>${esc(q.title)}</strong>${bar(Math.min(1, n / q.target), '#2AA198')}<span class="small muted">${Math.min(n, q.target)} / ${q.target} · ${esc(q.reward)}</span></div>
+      return `<div class="panel row"><div><strong>${esc(q.title)}</strong>${bar(Math.min(1, n / q.target), G.TONE.progress)}<span class="small muted">${Math.min(n, q.target)} / ${q.target} · ${esc(q.reward)}</span></div>
         <button class="pill" data-action="claim-weekly" data-id="${q.id}" ${claimed || n < q.target ? 'disabled' : ''}>${claimed ? 'Abgeholt' : 'Abholen'}</button></div>`; }).join('')}</div>
     <h3>Rekorde &amp; Shiny-Zähler</h3>
     <div class="cards">
@@ -156,7 +156,7 @@ function rivalCard(s) {
   return `<div class="panel rival compact"><img src="${ds(ace)}" alt=""><div class="stack">
     <div class="row"><h3>Rivale ${esc(G.C.life.rival.name)}${info(`„${G.C.life.rival.quote}“ Barry fordert dich jede Woche heraus. Nimm den Kampf an, dann zieht jede Trainingsrunde ihm KP ab. Sieg: ${G.rivalReward(s)} Münzen + ${G.C.life.rival.rewardPoints} Kampfpunkte.`)}</h3>${typeBadges(G.typesOf(ace), true)}</div>
     ${r.beaten ? '<p class="small note-share">✓ Diese Woche besiegt</p>'
-      : `${bar((max - r.damage) / max, '#E8920E')}<div class="row"><span class="small muted">${max - r.damage} / ${max} KP${p ? ` · ${esc(G.describe(p).name)}: ${G.SHORT_MATCHUP[m]}` : ''}</span>
+      : `${bar((max - r.damage) / max, G.TONE.opponent)}<div class="row"><span class="small muted">${max - r.damage} / ${max} KP${p ? ` · ${esc(G.describe(p).name)}: ${G.SHORT_MATCHUP[m]}` : ''}</span>
         <button class="pill small ${r.active ? 'quiet' : ''}" data-action="${r.active ? 'rival-leave' : 'rival-start'}" ${app.session ? 'disabled' : ''}>${r.active ? 'Verlassen' : 'Annehmen'}</button></div>`}</div></div>`;
 }
 function spearCard(s) {
@@ -178,7 +178,7 @@ function renderRaids(body) {
       <img src="${art(boss.pokedexID)}" alt="">
       <div><h3>${esc(G.lineTitle(boss.rewardSpecies))}</h3>
         ${typeBadges(G.typesOf(boss.pokedexID))}
-        ${bar(boss.currentHP / boss.maxHP, '#E3463B')}
+        ${bar(boss.currentHP / boss.maxHP, G.TONE.opponent)}
         <p class="small muted">${num(boss.currentHP)} / ${num(boss.maxHP)} KP · Belohnung ${boss.rewardCoins} Münzen + ${esc(G.lineTitle(boss.rewardSpecies))} · ${boss.defeatedCount}× besiegt</p>
         <p class="small">Schwach gegen: ${typeBadges(G.weaknesses(G.typesOf(boss.pokedexID)), true)}</p>
         ${(() => { const m = G.currentRaidMatchup(s); const p = G.findPokemon(s, s.selectedPokemonID); return `<p class="small ${m === 'super' ? 'note-share' : m === 'weak' ? 'note-sun' : 'muted'}">${p ? `${esc(G.describe(p).name)}: ` : ''}${G.MATCHUP[m].label}</p>`; })()}
@@ -187,7 +187,7 @@ function renderRaids(body) {
         <button class="pill quiet" data-action="bosses" ${app.session ? 'disabled' : ''}>Boss wechseln</button></div>
     </div>
     <h3>Tagesquests</h3>
-    <div class="stack">${quests.map((q) => `<div class="panel row"><div><strong>${esc(q.title)}</strong>${q.kind === 'type' ? ` ${typeBadges([q.typeID], true)}` : ''}${bar(q.currentValue / q.targetValue)}<span class="small muted">${q.currentValue} / ${q.targetValue} · ${G.C.quests.find((d) => d.kind === q.kind)?.rewardCoins ?? q.rewardCoins} Münzen</span>
+    <div class="stack">${quests.map((q) => `<div class="panel row"><div><strong>${esc(q.title)}</strong>${q.kind === 'type' ? ` ${typeBadges([q.typeID], true)}` : ''}${bar(q.currentValue / q.targetValue, G.TONE.progress)}<span class="small muted">${q.currentValue} / ${q.targetValue} · ${G.C.quests.find((d) => d.kind === q.kind)?.rewardCoins ?? q.rewardCoins} Münzen</span>
       ${(() => { if (q.kind !== 'type' || q.currentValue >= q.targetValue) return ''; const pick = G.bestOfType(s, q.typeID); return pick && pick.id !== s.selectedPokemonID ? `<button class="link" data-action="partner" data-id="${pick.id}" ${app.session ? 'disabled' : ''}>${esc(G.describe(pick).name)} wählen</button>` : ''; })()}</div>
       <button class="pill" data-action="claim-quest" data-id="${q.id}" ${q.isClaimed || q.currentValue < q.targetValue ? 'disabled' : ''}>${q.isClaimed ? 'Abgeholt' : 'Abholen'}</button></div>`).join('')}</div>
     <h3>Pokémon-Eier</h3>

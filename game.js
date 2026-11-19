@@ -1945,7 +1945,7 @@ export function todayEvents(state, mode = 'owned', date = new Date()) {
     if (habitatUnlocked(state, r.habitat)) events.push({ kind: 'roamer', title: `${pokemonName(r.dexID)} gesichtet`, detail: `Heute ${r.habitat.locative}`, dexID: r.dexID, habitatID: r.habitat.id });
   }
   const egg = ensureJourney(state).pension.egg;
-  if (egg) events.push({ kind: 'pension', title: 'Ei in der Pension', detail: egg.minutesLeft <= 0 ? 'Schlüpft in der nächsten Runde' : `Noch ${egg.minutesLeft} Fokus-Min bis zum Schlüpfen` });
+  if (egg) events.push({ kind: 'pension', title: 'Ei in der Pension', detail: egg.minutesLeft <= 0 ? 'Schlüpft in der nächsten Runde' : `Noch ${egg.minutesLeft} Fokus-Min bis zum Schlüpfen`, urgent: eggWobbles(egg.minutesLeft) });
   const o = massOutbreak(date);
   if (habitatUnlocked(state, o.habitat)) events.push({ kind: 'outbreak', title: `Massenauftreten: ${o.name}`, detail: `Jage ${o.habitat.locative}`, dexID: o.dexID, habitatID: o.habitat.id });
   const starID = pokemonOfTheDay(state.pokemonRoster, date);
@@ -1954,7 +1954,7 @@ export function todayEvents(state, mode = 'owned', date = new Date()) {
   const r = rival(state, date);
   if (r.active && !r.beaten) events.push({ kind: 'rival', title: 'Kampf gegen Barry läuft', detail: `${Math.max(0, rivalMaxHP(state) - r.damage)} / ${rivalMaxHP(state)} KP übrig`, dexID: rivalAce(state, date) });
   for (const e of events) e.id = `${e.kind}|${e.title}`;
-  return events.map((e, i) => [e, i]).sort((a, b) => (TODAY_ORDER.indexOf(a[0].kind) - TODAY_ORDER.indexOf(b[0].kind)) || a[1] - b[1]).map(([e]) => e);
+  return events.map((e, i) => [e, i]).sort((a, b) => (Number(!!b[0].urgent) - Number(!!a[0].urgent)) || (TODAY_ORDER.indexOf(a[0].kind) - TODAY_ORDER.indexOf(b[0].kind)) || a[1] - b[1]).map(([e]) => e);
 }
 export const TODAY_VISIBLE = 1;
 
@@ -2061,3 +2061,56 @@ export function addMessage(log = [], message) {
   return [clean, ...log].slice(0, MESSAGE_MAX);
 }
 export const POKETCH_ESSENTIALS = ['timer', 'memo', 'pedometer', 'party'];
+
+// MARK: 5.12 – Klarheit & Gefühl (gleiche Regeln wie PolishFourModels.swift)
+export const poketchReadyLabel = (wild, berry) => (wild ? 'Bereit · Wild' : 'Bereit') + (berry ? ` · ${berry}` : '');
+export const poketchTopRight = (running, percent, coins) => (running ? `${percent} %` : `+${coins} Münzen`);
+export const poketchBottomRight = (wild, xp, shinyPercent) => (wild ? `Shiny ${shinyPercent} %` : `+${xp} EP`);
+export function poketchPartnerLine(name, before, after, evolvesTo) {
+  if (evolvesTo) return `Entwicklung: ${evolvesTo}!`;
+  return after > before ? `${name} Lv. ${before} → ${after}` : `${name} Lv. ${before}`;
+}
+export const showsStageLine = (inBreak, everstone, violation) => !!(inBreak || everstone || violation);
+export function durationPreviewText(xp, before, after, evolvesTo) {
+  const parts = [`+${xp} EP`, after > before ? `Lv. ${before} → ${after}` : `bleibt Lv. ${before}`];
+  if (evolvesTo) parts.push(`entwickelt sich zu ${evolvesTo}`);
+  return parts.join(' · ');
+}
+export function remainingBadge(secondsLeft, running) {
+  if (!running || secondsLeft <= 0) return null;
+  return secondsLeft < 60 ? '<1' : String(Math.ceil(secondsLeft / 60));
+}
+export const remainingTitle = (secondsLeft, running) => { const b = remainingBadge(secondsLeft, running); return b ? `Noch ${b} Min · PokéForest` : 'PokéForest'; };
+export const LCD_FLICKER = { start: [0.2, 1, 0.35, 1], end: [0.25, 1, 0.25, 1], stepSeconds: 0.09 };
+export const HABITAT_CHIP_SPRITES = 3;
+export const habitatResidentsPreview = (ids) => ({ shown: ids.slice(0, HABITAT_CHIP_SPRITES), more: Math.max(0, ids.length - HABITAT_CHIP_SPRITES) });
+export const galacticSignText = (progress, goal) => `${Math.min(progress, goal)} / ${goal} Min`;
+export const EGG_WOBBLE_MINUTES = 10;
+export function eggWobbles(minutesLeft) { return minutesLeft <= EGG_WOBBLE_MINUTES; }
+export const itemSpriteURL = (id) => `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/${id === 'sonderbonbon' ? 'rare-candy' : id}.png`;
+const ORDINALS = { 2: 'Zweites', 3: 'Drittes', 4: 'Viertes', 5: 'Fünftes', 6: 'Sechstes', 7: 'Siebtes', 8: 'Achtes', 9: 'Neuntes', 10: 'Zehntes' };
+export const shopOrdinal = (n) => ORDINALS[n] ?? `${n}.`;
+export function copyButtonText(name, owned, price, coins) {
+  const label = `${shopOrdinal(owned + 1)} ${name}`;
+  return coins >= price ? `${label} · ${price} Münzen` : `${label}: noch ${price - coins} Münzen`;
+}
+export const unlockButtonText = (price, coins) => (coins >= price ? `Freischalten · ${price} Münzen` : `Noch ${price - coins} Münzen bis zum Freischalten`);
+/** What you can buy next first, lines you already train at the back. price is null for lines that can't be bought. */
+export function buyingOrder(items, coins) {
+  const rank = (x) => (x.owned ? 3 : x.unlocked ? 2 : x.price == null ? 2 : x.price <= coins ? 0 : 1);
+  return items.map((x, i) => [x, i]).sort((a, b) => {
+    const ra = rank(a[0]); const rb = rank(b[0]);
+    if (ra !== rb) return ra - rb;
+    if (ra <= 1 && a[0].price != null && b[0].price != null && a[0].price !== b[0].price) return a[0].price - b[0].price;
+    return a[1] - b[1];
+  }).map(([x]) => x.item);
+}
+export const gymCardShowsTrainButton = (nextGoalIsTraining) => !nextGoalIsTraining;
+export const EMPTY_MASCOT = { bag: 143, tasks: 39, chronicle: 79, pension: 175, messages: 446, search: 54, team: 133, berries: 420 };
+export function levelUpMoment(name, spriteID, isShiny, from, to) {
+  if (!(to > from)) return null;
+  return { name, spriteID, isShiny, from, to, text: to - from > 1 ? `${name} ist jetzt Lv. ${to}! (+${to - from})` : `${name} ist jetzt Lv. ${to}!` };
+}
+export const LEVEL_UP_SECONDS = 2.6;
+export const TONE = { progress: '#3FAE5A', opponent: '#D9604A', reward: '#E0A82E', locked: '#8A8F98' };
+export const MAX_SUBTITLE = 48;
