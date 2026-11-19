@@ -2116,7 +2116,8 @@ export const TONE = { progress: '#3FAE5A', opponent: '#D9604A', reward: '#E0A82E
 export const MAX_SUBTITLE = 48;
 
 // MARK: 5.13 – Ruhe & Überblick (gleiche Regeln wie PolishFiveModels.swift)
-export const streakSidebar = (days) => (days > 0 ? `🔥 ${days} ${days === 1 ? 'Tag' : 'Tage'}` : '1 Runde startet deine Serie');
+export const streakSidebar = (days) => (days > 0 ? `🔥 ${days} ${days === 1 ? 'Tag' : 'Tage'}` : 'Serie starten');
+export const STREAK_HINT = 'Eine Runde heute startet deine Serie.';
 export const CANCEL_HOLD_SECONDS = 1;
 export function durationChips(lastCustom) {
   const c = Number(lastCustom);

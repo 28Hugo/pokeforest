@@ -30,6 +30,7 @@ app.render = function render() {
   countCoins(s ? s.coins : null);
   $('#coins').title = s ? `${G.formatNumber(s.coins)} PokéMünzen` : '';
   $('#streak').textContent = s ? G.streakSidebar(G.streakDays(s)) : '';
+  $('#streak').title = s && !G.streakDays(s) ? G.STREAK_HINT : '';
   if (s) { const lv = G.trainerLevel(s); $('#trainer-line').textContent = G.trainerLine(lv, G.rankFor(lv).title); $('#trainer-line').title = `Noch ${G.formatNumber(G.trainerThreshold(lv + 1) - G.trainerXP(s))} XP bis Lv. ${lv + 1}`; } else $('#trainer-line').textContent = '';
   $('#sync-dot').textContent = s ? (!app.meta.exportedAt ? 'Nicht gesichert' : app.meta.changedAt > app.meta.exportedAt ? '● Nicht gesichert' : 'Gesichert') : '';
   $('#goal').innerHTML = s ? `<span style="width:${Math.round(Math.min(1, G.todayMinutes(s) / G.dailyGoal(s)) * 100)}%"></span>` : '';
