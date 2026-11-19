@@ -13,12 +13,6 @@ export function render(view) {
   const current = sub('trainer', 'gyms');
   const group = G.trainerGroupOf(current);
   view.innerHTML = `
-    <div class="panel trainer-head">
-      <img src="${art(avatar.pokedexID, avatar.isShiny)}" alt="" style="background:${avatar.colorHex}33">
-      <div><h2>${esc(s.trainerName)}</h2>
-        <p class="small" style="color:${rank.colorHex}">Lv. ${level} · ${rank.badgeEmoji} ${esc(rank.title)}${streak ? ` · ${streak} ${streak === 1 ? 'Tag' : 'Tage'} Serie` : ''}</p>
-        ${bar(progress, rank.colorHex)}<p class="small muted">${num(G.trainerThreshold(level + 1) - xp)} XP bis zum nächsten Level</p></div>
-    </div>
     ${(() => { const goal = G.nextGoal(s); return goal ? `<div class="panel next-goal"><span class="goal-icon" aria-hidden="true">${goal.icon}</span>
       <div class="stack"><small class="muted">Nächstes Ziel</small><strong>${esc(goal.title)}</strong>${goal.progress != null ? bar(goal.progress, G.TONE.progress) : ''}<small class="muted">${esc(goal.detail)}</small></div>
       <button class="pill" data-action="goal" data-goal="${goal.action}" ${goal.action === 'train' && app.session ? 'disabled' : ''}>${goal.action === 'train' ? 'Zum Training' : 'Ansehen'}</button></div>` : ''; })()}
@@ -80,7 +74,9 @@ function renderGyms(body) {
     ${card}
     <div class="duo">${rivalCard(s)}${spearCard(s)}</div>
     <h3>Pokémon-Liga ${s.journey?.gyms?.leagueRematches ? `<span class="small muted">Revanche ${s.journey.gyms.leagueRematches}</span>` : ''}</h3>
-    <div class="league-row">${G.league().map((l) => `<div class="${G.isDefeated(s, l) ? 'won' : G.challengeAvailable(s, l) ? 'open' : 'locked'}"><img src="${ds(l.aceDexID)}" alt=""><strong>${esc(l.leader)}</strong><small>${esc(l.title)}</small></div>`).join('')}</div>`;
+    ${G.leagueLockHint(G.gymBadgeCount(s)) ? `<p class="small muted">🔒 ${G.leagueLockHint(G.gymBadgeCount(s))}</p>` : ''}
+    ${(() => { const next = G.league().find((l) => !G.isDefeated(s, l) && G.challengeAvailable(s, l));
+      return `<div class="league-row">${G.league().map((l) => `<div class="${G.isDefeated(s, l) ? 'won' : G.challengeAvailable(s, l) ? 'open' : 'locked'} ${next && next.id === l.id ? 'next' : ''}"><img src="${ds(l.aceDexID)}" alt=""><strong>${esc(l.leader)}</strong><small>${esc(l.title)}</small></div>`).join('')}</div>`; })()}`;
 }
 
 function renderZone(body) {
@@ -250,8 +246,10 @@ function renderLeague(body) {
       <p class="small muted">Eine Belohnung je Kalenderwoche.</p></div>
     <div class="panel"><h3>Rivalen dieser Woche</h3>${G.C.rivals.map((r) => `<div class="rival"><img src="${pixel(r.partnerPokedexID)}" alt=""><div><strong>${esc(r.name)}</strong><span class="small muted">${esc(r.title)} · ${r.weeklyTargetMinutes} Min</span></div>
       <span class="small ${league.minutes >= r.weeklyTargetMinutes ? 'note-sun' : 'muted'}">${league.minutes >= r.weeklyTargetMinutes ? 'Besiegt' : `noch ${r.weeklyTargetMinutes - league.minutes} Min`}</span></div>`).join('')}</div>
-    ${(() => { const r = G.professorRating(s); return `<div class="panel memo prof"><small class="muted">Prof. Eibe bewertet deinen Pokédex</small><h3>${esc(r.title)} · ${G.ownedPokedexCount(s)} / 1025</h3><p>„${esc(r.text)}“</p></div>`; })()}
-    <div class="row"><h3>Pokédex <span class="small muted">${G.ownedPokedexCount(s)} / 1025 gefangen</span></h3><label class="switch"><input type="checkbox" data-action="dex-shiny" ${shiny ? 'checked' : ''}> Shiny</label></div>
+    <div class="row"><h3>Pokédex <span class="small muted">${G.formatNumber(G.ownedPokedexCount(s))} / 1.025 gefangen</span></h3><label class="switch"><input type="checkbox" data-action="dex-shiny" ${shiny ? 'checked' : ''}> Shiny</label></div>
+    ${(() => { const r = G.professorRating(s); return `<p class="small muted">Prof. Eibe: ${esc(r.title)} · „${esc(r.text)}“</p>`; })()}
+    ${(() => { const owned = new Set(s.pokemonRoster.flatMap((p) => p.species.stages.slice(0, G.describe(p).stage).map((st) => st.pokedexID)));
+      return `<div class="dex-regions">${G.dexRegionProgress(owned).map((r) => `<div><div class="row small"><span>${r.name}</span><span class="muted">${r.owned}/${r.total}</span></div>${bar(r.owned / r.total, G.TONE.progress)}</div>`).join('')}</div>`; })()}
     <label class="switch"><input type="checkbox" data-action="dex-sinnoh" ${app.meta.dexSinnoh ? 'checked' : ''}> Sinnoh-Dex (Platin, Nr. 1–210)</label>
     ${app.meta.dexSinnoh ? (() => { const owned = new Set(s.pokemonRoster.flatMap((p) => p.species.stages.slice(0, G.describe(p).stage).map((st) => st.pokedexID)));
       const order = G.C.life.sinnohDex; const have = order.filter((id) => owned.has(id)).length;
@@ -261,8 +259,9 @@ function renderLeague(body) {
     <p class="small muted">${dex.filter((x) => G.isUnlocked(s, x)).length} von ${dex.length} entdeckten Linien freigeschaltet.</p>
     <div class="dex">${(() => { const q = (app.meta.dexSearch || '').trim().toLowerCase().replace('#', '');
       const owned = new Set(s.pokemonRoster.flatMap((p) => p.species.stages.slice(0, G.describe(p).stage).map((st) => st.pokedexID)));
-      return dex.filter((x) => (!Number(app.meta.dexType) || x.stages.some((st) => G.typesOf(st.pokedexID).includes(Number(app.meta.dexType))))
-        && (!q || x.stages.some((st) => st.name.toLowerCase().includes(q) || String(st.pokedexID) === q)))
+      const filtered = dex.filter((x) => (!Number(app.meta.dexType) || x.stages.some((st) => G.typesOf(st.pokedexID).includes(Number(app.meta.dexType))))
+        && (!q || x.stages.some((st) => st.name.toLowerCase().includes(q) || String(st.pokedexID) === q)));
+      return G.dexGapsFirst(filtered.map((x) => ({ item: x, caught: x.stages.filter((st) => owned.has(st.pokedexID)).length, total: x.stages.length })))
         .map((x) => { const caught = x.stages.filter((st) => owned.has(st.pokedexID)); const place = G.habitatForDex(x.stages[0].pokedexID);
           return `<div class="dex-entry ${G.isUnlocked(s, x) ? '' : 'locked'}">${x.stages.map((st) => `<img src="${pixel(st.pokedexID, shiny)}" alt="${esc(st.name)}" title="${esc(st.name)} #${st.pokedexID}" loading="lazy">`).join('')}<small>${esc(G.lineTitle(x))}</small>${typeBadges(G.typesOf(x.stages[0].pokedexID), true)}
             <small class="${caught.length ? 'note-share' : 'muted'}">${caught.length ? `✓ ${caught.map((st) => esc(st.name)).join(', ')}` : 'Noch nicht gefangen'}</small>${place ? `<small class="muted">📍 ${esc(place.name)}</small>` : ''}</div>`; }).join(''); })()}</div>`;

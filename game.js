@@ -2013,7 +2013,7 @@ export function shopArranged(lines, scope, owned, unlocked) {
     .filter(([x]) => scope === 'unlocked' ? unlocked(x) : scope === 'locked' ? !unlocked(x) : true)
     .sort((a, b) => (rank(a[0]) - rank(b[0])) || a[1] - b[1]).map(([x]) => x);
 }
-export const SHORTCUTS_WEB = [['Leertaste', 'Runde starten oder Ewigstein-Pause'], ['1 – 5', 'Seiten wechseln'], ['?', 'Diese Übersicht']];
+export const SHORTCUTS_WEB = [['Leertaste', 'Runde starten oder Ewigstein-Pause'], ['1 – 5', 'Seiten wechseln'], ['← / →', 'Tabs der Seite wechseln'], ['?', 'Diese Übersicht']];
 export const digProgress = (minutesToNext) => Math.min(1, Math.max(0, (C.underground.minutesPerDig - minutesToNext) / C.underground.minutesPerDig));
 
 // MARK: 5.11 – Fokus auf das Wesentliche (gleiche Regeln wie PolishThreeModels.swift)
@@ -2114,3 +2114,60 @@ export function levelUpMoment(name, spriteID, isShiny, from, to) {
 export const LEVEL_UP_SECONDS = 2.6;
 export const TONE = { progress: '#3FAE5A', opponent: '#D9604A', reward: '#E0A82E', locked: '#8A8F98' };
 export const MAX_SUBTITLE = 48;
+
+// MARK: 5.13 – Ruhe & Überblick (gleiche Regeln wie PolishFiveModels.swift)
+export const streakSidebar = (days) => (days > 0 ? `🔥 ${days} ${days === 1 ? 'Tag' : 'Tage'}` : '1 Runde startet deine Serie');
+export const CANCEL_HOLD_SECONDS = 1;
+export function durationChips(lastCustom) {
+  const c = Number(lastCustom);
+  if (!c || c < 5 || c > 180 || DURATION_PRESETS.includes(c)) return [...DURATION_PRESETS];
+  return [...DURATION_PRESETS, c].sort((a, b) => a - b);
+}
+export const rememberCustom = (m) => m >= 5 && m <= 180 && !DURATION_PRESETS.includes(m);
+export const RESULT_PAUSE_MINUTES = 5;
+export const resultShowsPause = (autoBreakMinutes, inChain) => !autoBreakMinutes && !inChain;
+export function startLabel(wild, partner, task, minutes) {
+  if (task) return `${task} · ${minutes} Min`;
+  return wild ? `Ins hohe Gras gehen · ${minutes} Min` : `${partner} trainieren · ${minutes} Min`;
+}
+export function pcVisibleRows(occupied, columns, rows) {
+  if (!columns || !rows) return 0;
+  const last = Math.max(-1, ...occupied.filter((i) => i >= 0));
+  return last < 0 ? 1 : Math.min(rows, Math.floor(last / columns) + 2);
+}
+export const EXPEDITION_PICKS = 3;
+export const expeditionPicks = (list) => list.map((x, i) => [x, i]).sort((a, b) => (b[0].level - a[0].level) || a[1] - b[1]).slice(0, EXPEDITION_PICKS).map(([x]) => x.id);
+export function pensionPairs(list) {
+  const pairs = []; const used = new Set();
+  const byLine = {};
+  for (const c of list) (byLine[c.lineKey] ||= []).push(c);
+  for (const key of Object.keys(byLine).sort()) {
+    const g = [...byLine[key]].sort((a, b) => (Number(b.isShiny) - Number(a.isShiny)) || (b.level - a.level));
+    if (g.length >= 2) { pairs.push([g[0], g[1]]); used.add(g[0].id); used.add(g[1].id); }
+  }
+  const rest = list.filter((c) => !used.has(c.id));
+  for (const shiny of rest.filter((c) => c.isShiny)) {
+    if (used.has(shiny.id)) continue;
+    const mate = rest.filter((c) => c.id !== shiny.id && !used.has(c.id)).reduce((best, c) => (!best || c.level > best.level ? c : best), null);
+    if (mate) { pairs.push([shiny, mate]); used.add(shiny.id); used.add(mate.id); }
+  }
+  return pairs.slice(0, 3);
+}
+export const weekChartEmpty = (minutes) => minutes.every((m) => m <= 0);
+export const CHRONICLE_TITLES = ['Fokus-Zeit', 'Gefangene Pokémon', 'Geschaffte Runden'];
+export const successPercent = (done, started) => (started > 0 ? Math.round((done / started) * 100) : 0);
+export const leagueLockHint = (badges) => (badges >= 8 ? null : `Ab 8 Orden · noch ${8 - badges}`);
+export function dexGapsFirst(lines) {
+  return lines.map((x, i) => [x, i]).sort((a, b) => {
+    const ma = a[0].total - a[0].caught; const mb = b[0].total - b[0].caught;
+    const ca = ma <= 0; const cb = mb <= 0;
+    if (ca !== cb) return ca ? 1 : -1;
+    if (!ca && ma !== mb) return ma - mb;
+    return a[1] - b[1];
+  }).map(([x]) => x.item);
+}
+export const DEX_REGIONS = [['Kanto', 1, 151], ['Johto', 152, 251], ['Hoenn', 252, 386], ['Sinnoh', 387, 493], ['Einall', 494, 649], ['Kalos', 650, 721], ['Alola', 722, 809], ['Galar', 810, 905], ['Paldea', 906, 1025]];
+export const dexRegionProgress = (owned) => DEX_REGIONS.map(([name, a, b]) => ({ name, owned: [...owned].filter((id) => id >= a && id <= b).length, total: b - a + 1 }));
+export function formatNumber(value) { return String(Math.abs(value)).replace(/\B(?=(\d{3})+(?!\d))/g, '.').replace(/^/, value < 0 ? '-' : ''); }
+export const trainerLine = (level, title) => `Lv. ${level} · ${title}`;
+export const tabCycle = (current, count, forward) => (count > 0 ? (((current + (forward ? 1 : -1)) % count) + count) % count : 0);

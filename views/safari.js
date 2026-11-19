@@ -119,7 +119,12 @@ function renderPension(body) {
       : parents.length >= P.capacity ? `<div><h3>Die beiden verstehen sich gut.</h3>${bar(j.pension.minuteBank / P.eggMinutes, '#EB85C7')}<p class="small muted">Ei in ${P.eggMinutes - j.pension.minuteBank} Fokus-Minuten</p></div>`
       : `<div><h3>Noch kein Paar</h3><p class="small muted">Gib zwei Pokémon ab. Das Ei stammt von einem der beiden.</p></div>`}
       ${app.meta.lastHatch ? `<div class="hatch-pop"><span class="shell l"></span><span class="shell r"></span><img src="${ds(app.meta.lastHatch.spriteID, app.meta.lastHatch.shiny)}" alt=""><small class="note-share">${esc(app.meta.lastHatch.name)}${app.meta.lastHatch.shiny ? ' ✨' : ''} ist geschlüpft!</small></div>` : ''}
-    </div>`;
+    </div>
+    ${parents.length ? '' : (() => { const pool = G.pensionCandidates(s, !!app.session).filter((p) => !s.teamPokemonIDs.includes(p.id));
+      const pairs = G.pensionPairs(pool.map((p) => ({ id: p.id, lineKey: G.lineKey(p.species), isShiny: !!p.isShiny, level: G.describe(p).level })));
+      return pairs.length ? `<h3>Passende Paare aus dem PC</h3><div class="stack">${pairs.map(([a, b]) => { const pa = G.findPokemon(s, a.id); const pb = G.findPokemon(s, b.id); const da = G.describe(pa); const db = G.describe(pb);
+        return `<div class="panel row pair"><img src="${ds(da.spriteID, pa.isShiny)}" alt=""><img src="${ds(db.spriteID, pb.isShiny)}" alt=""><div><strong>${esc(da.name)} &amp; ${esc(db.name)}</strong><small class="muted">${a.lineKey === b.lineKey ? 'Gleiche Linie' : 'Mit Shiny: doppelte Shiny-Chance'}</small></div>
+          <button class="pill quiet" data-action="pension-pair" data-ids="${a.id},${b.id}" ${app.session ? 'disabled' : ''}>Beide abgeben</button></div>`; }).join('')}</div>` : ''; })()}`;
 }
 function pensionPicker() {
   const s = app.state;
@@ -215,7 +220,6 @@ function renderTeam(body) {
       <label class="switch"><input type="checkbox" data-action="share" ${s.expShareEnabled ? 'checked' : ''}> EP-Teiler</label>
       <span class="small muted">${s.expShareEnabled ? `Jedes andere Team-Mitglied bekommt ${G.SHARE_PERCENT} % der EP des Partners.` : 'Aus: nur der Partner bekommt EP.'}</span>
     </div>
-    ${dayID ? (() => { const star = G.findPokemon(s, dayID); return `<div class="panel row sun-card"><img src="${pixel(G.describe(star).spriteID, star.isShiny)}" alt=""><p class="small"><strong class="note-sun">Pokémon des Tages</strong><br>${esc(G.describe(star).name)} bekommt heute +${G.DAY_BONUS_PERCENT} % EP.</p><button class="pill quiet" data-action="partner" data-id="${dayID}" ${app.session ? 'disabled' : ''}>Trainieren</button></div>`; })() : ''}
     <div class="box-head">
       <button class="icon-btn" data-action="box" data-delta="-1" ${app.meta.boxIndex === 0 ? 'disabled' : ''} aria-label="Vorherige Box">‹</button>
       <h3><button class="link" data-action="rename-box">${esc(box.name)}</button> <span class="muted small">${box.pokemonIDs.length}/${G.BOX_CAPACITY}</span></h3>
@@ -240,7 +244,7 @@ function renderTeam(body) {
     </div>
     ${filtering ? `<div class="row wrap small">${hits.length ? 'Treffer:' : 'Keine Treffer im PC'} ${hits.map(([i, n]) => `<button class="chip ${i === app.meta.boxIndex ? 'on' : ''}" data-action="goto-box" data-index="${i}">${esc(s.pcBoxes[i].name)} (${n})</button>`).join('')}</div>` : ''}
     <div class="pc-grid" style="background:linear-gradient(${G.wallpaperOf(s, app.meta.boxIndex).colors[0]}99, ${G.wallpaperOf(s, app.meta.boxIndex).colors[1]}88)">
-      ${Array.from({ length: G.BOX_CAPACITY }, (_, i) => box.pokemonIDs[i]).map((id) => {
+      ${Array.from({ length: G.pcVisibleRows(box.pokemonIDs.map((_, i) => i), 6, G.BOX_CAPACITY / 6) * 6 }, (_, i) => box.pokemonIDs[i]).map((id) => {
         if (!id) return '<div class="cell"></div>';
         const p = G.findPokemon(s, id); const d = G.describe(p);
         const picked = (app.meta.pcPicked || []).includes(id);
@@ -248,13 +252,18 @@ function renderTeam(body) {
           <img src="${pixel(d.spriteID, p.isShiny)}" alt="" loading="lazy">${badges(p)}<span class="lv">${d.level}</span></button>`;
       }).join('')}
     </div>
-    <h3 style="margin-top:20px">Expeditionen <span class="muted small">${(s.expeditions || []).length} / ${G.MAX_EXPEDITIONS}</span></h3>
+    <h3 style="margin-top:20px">Expeditionen <span class="muted small">${(s.expeditions || []).length} / ${G.MAX_EXPEDITIONS}</span>${info('PC-Pokémon erkunden die Gegend, während du dich konzentrierst. Jede geschaffte Fokus-Minute bringt sie weiter.')}</h3>
+    ${(() => { if ((s.expeditions || []).length >= G.MAX_EXPEDITIONS) return '';
+      const pool = s.pokemonRoster.filter((p) => !s.teamPokemonIDs.includes(p.id) && !G.onExpedition(s, p.id) && !G.inPension(s, p.id) && !G.habitatOf(s, p.id)).map((p) => ({ id: p.id, level: G.describe(p).level }));
+      const picks = G.expeditionPicks(pool).map((id) => G.findPokemon(s, id));
+      return picks.length ? `<div class="row wrap trip-picks">${picks.map((p) => { const d = G.describe(p); return `<span class="trip-pick"><img src="${pixel(d.spriteID, p.isShiny)}" alt="">${esc(d.name)} · Lv. ${d.level}
+        <select data-action="trip-send" data-id="${p.id}" aria-label="${esc(d.name)} losschicken"><option value="">Losschicken …</option>${Object.entries(G.EXPEDITIONS).map(([k, e]) => `<option value="${k}">${e.icon} ${esc(e.title)} · ${e.goal} Min</option>`).join('')}</select></span>`; }).join('')}</div>` : ''; })()}
     <div class="trips">${(s.expeditions || []).length ? s.expeditions.map((t) => {
       const k = G.EXPEDITIONS[t.kind]; const p = G.findPokemon(s, t.pokemonID); const d = G.describe(p); const done = t.progressMinutes >= k.goal;
       return `<div class="panel trip"><img src="${pixel(d.spriteID, p.isShiny)}" alt=""><div><strong>${k.icon} ${k.title}</strong> <span class="muted small">${esc(d.name)}</span>${bar(t.progressMinutes / k.goal)}
         <span class="small muted">${done ? 'Zurück mit Fundstücken!' : `${t.progressMinutes} / ${k.goal} Fokus-Minuten`} · ${k.coins} Münzen, ${k.berries.map(G.berryName).join(' + ')}</span></div>
         ${done ? `<button class="pill" data-action="claim-trip" data-id="${t.id}">Abholen</button>` : `<button class="pill quiet" data-action="recall" data-id="${t.id}">Zurückrufen</button>`}</div>`;
-    }).join('') : '<p class="muted small">Tippe ein Pokémon im PC an und schicke es los. Jede Fokus-Minute bringt es weiter.</p>'}</div>`;
+    }).join('') : ''}</div>`;
 }
 
 // MARK: Statistics
@@ -282,15 +291,14 @@ function renderStats(body) {
   const weekMax = Math.max(1, ...week.map((d) => d.minutes));
   body.innerHTML = `
     ${segmented('period', PERIODS)}
-    <div class="cards">
-      <div class="card"><strong>${num(minutes)}</strong><span>Fokus-Minuten</span></div>
-      <div class="card"><strong>${wins.length}</strong><span>erfolgreiche Runden</span></div>
-      <div class="card"><strong>${rate == null ? '–' : `${rate} %`}</strong><span>Erfolgsquote</span></div>
-      <div class="card"><strong>${num(wins.reduce((a, t) => a + t.coinsEarned, 0))}</strong><span>Münzen verdient</span></div>
+    <div class="cards three">
+      <div class="card"><strong>${G.formatNumber(minutes)} Min</strong><span>${G.CHRONICLE_TITLES[0]}</span></div>
+      <div class="card"><strong>${G.formatNumber(wins.filter((t) => t.wasWildEncounter).length)}</strong><span>${G.CHRONICLE_TITLES[1]}</span></div>
+      <div class="card"><strong>${rate == null ? '–' : `${G.successPercent(wins.length, entries.length)} %`}</strong><span>${G.CHRONICLE_TITLES[2]} · ${wins.length} von ${entries.length}</span></div>
     </div>
     <div class="panel"><h3>Diese Woche</h3>
-      <div class="week">${week.map((d) => `<div><span style="height:${Math.round((d.minutes / weekMax) * 100)}%" title="${d.minutes} Min"></span><small>${d.date.toLocaleDateString('de-DE', { weekday: 'short' })}</small></div>`).join('')}</div>
-      <p class="small muted">${week.reduce((a, d) => a + d.minutes, 0)} Minuten an ${week.filter((d) => d.minutes).length} Tagen · Serie: ${G.streakDays(s)} Tage</p></div>
+      ${G.weekChartEmpty(week.map((d) => d.minutes)) ? emptyState(G.EMPTY_MASCOT.chronicle, 'Diese Woche noch keine Runde. Die erste füllt das Diagramm.') : `<div class="week">${week.map((d) => `<div><span style="height:${Math.round((d.minutes / weekMax) * 100)}%" title="${d.minutes} Min"></span><small>${d.date.toLocaleDateString('de-DE', { weekday: 'short' })}</small></div>`).join('')}</div>
+      <p class="small muted">${week.reduce((a, d) => a + d.minutes, 0)} Minuten an ${week.filter((d) => d.minutes).length} Tagen · Serie: ${G.streakDays(s)} Tage</p>`}</div>
     <button class="link" data-action="heat-toggle">${app.meta.showHeat ? '28 Tage ausblenden' : '28 Tage anzeigen'}</button>
     ${app.meta.showHeat ? `<div class="panel"><h3>Letzte 28 Tage</h3>
       <div class="heat">${heat.map((d) => `<span title="${d.date.toLocaleDateString('de-DE')}: ${d.minutes} Min" style="opacity:${d.minutes ? 0.25 + 0.75 * (d.minutes / max) : 0.08}"></span>`).join('')}</div>
@@ -360,6 +368,11 @@ export function handle(action, el) {
       if (el.dataset.from === 'picker' && G.pensionParents(s).length < G.C.journey.pension.capacity) pensionPicker(); else closeSheet();
       app.render(); return true;
     }
+    case 'pension-pair': {
+      const ids = el.dataset.ids.split(',');
+      const ok = ids.every((id) => G.addToPension(s, id, !!app.session));
+      if (ok) save(); toast(ok ? 'Beide sind jetzt in der Pension.' : 'Das geht gerade nicht.'); app.render(); return true;
+    }
     case 'pension-leave': G.removeFromPension(s, el.dataset.id); return done(true, 'Abgeholt. Es wartet im PC.');
     case 'habitat-place': {
       const message = G.placeInHabitat(s, el.dataset.id, currentHabitat());
@@ -394,6 +407,7 @@ export function change(el) {
     case 'wallpaper': G.setWallpaper(s, meta.boxIndex, el.value); save(); app.render(); return true;
     case 'sort-box': if (el.value) { G.sortBox(s, meta.boxIndex, el.value); save(); app.render(); } return true;
     case 'log-shiny': meta.logShiny = el.checked; saveMeta(); app.render(); return true;
+    case 'trip-send': if (el.value) { if (G.startExpedition(s, el.dataset.id, el.value)) { save(); toast(`${G.describe(G.findPokemon(s, el.dataset.id)).name} ist unterwegs.`); } else toast('Gerade nicht möglich.'); app.render(); } return true;
   }
   return false;
 }

@@ -16,10 +16,10 @@ function countCoins(to) {
   if (to == null) { el.textContent = ''; shownCoins = null; return; }
   const from = shownCoins;
   shownCoins = to;
-  if (from == null || from === to || matchMedia('(prefers-reduced-motion: reduce)').matches) { el.textContent = String(to); return; }
+  if (from == null || from === to || matchMedia('(prefers-reduced-motion: reduce)').matches) { el.textContent = G.formatNumber(to); return; }
   el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
   const start = performance.now();
-  const step = (t) => { if (shownCoins !== to) return; const k = Math.min(1, (t - start) / 600); el.textContent = String(Math.round(from + (to - from) * (1 - (1 - k) ** 3))); if (k < 1) requestAnimationFrame(step); };
+  const step = (t) => { if (shownCoins !== to) return; const k = Math.min(1, (t - start) / 600); el.textContent = G.formatNumber(Math.round(from + (to - from) * (1 - (1 - k) ** 3))); if (k < 1) requestAnimationFrame(step); };
   requestAnimationFrame(step);
 }
 
@@ -28,7 +28,9 @@ app.render = function render() {
   document.querySelectorAll('.tabbar button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.view === tab)));
   const s = app.state;
   countCoins(s ? s.coins : null);
-  $('#coins').title = s ? `${s.coins} PokéMünzen` : '';
+  $('#coins').title = s ? `${G.formatNumber(s.coins)} PokéMünzen` : '';
+  $('#streak').textContent = s ? G.streakSidebar(G.streakDays(s)) : '';
+  if (s) { const lv = G.trainerLevel(s); $('#trainer-line').textContent = G.trainerLine(lv, G.rankFor(lv).title); $('#trainer-line').title = `Noch ${G.formatNumber(G.trainerThreshold(lv + 1) - G.trainerXP(s))} XP bis Lv. ${lv + 1}`; } else $('#trainer-line').textContent = '';
   $('#sync-dot').textContent = s ? (!app.meta.exportedAt ? 'Nicht gesichert' : app.meta.changedAt > app.meta.exportedAt ? '● Nicht gesichert' : 'Gesichert') : '';
   $('#goal').innerHTML = s ? `<span style="width:${Math.round(Math.min(1, G.todayMinutes(s) / G.dailyGoal(s)) * 100)}%"></span>` : '';
   $('#goal').title = s ? `Heute ${G.todayMinutes(s)} / ${G.dailyGoal(s)} Min` : '';
@@ -70,7 +72,7 @@ function common(action, el) {
   const done = (ok, msg, fail) => { if (ok) { save(); if (msg) toast(msg); } else if (fail) toast(fail); closeSheet(); app.render(); return true; };
   switch (action) {
     case 'tab': { app.meta.tab = el.dataset.view; saveMeta(); app.render(); window.scrollTo(0, 0); const v = $('#view'); v.classList.remove('page-in'); void v.offsetWidth; v.classList.add('page-in'); return true; }
-    case 'sub': app.meta.sub[el.dataset.key] = el.dataset.value; saveMeta(); app.render(); return true;
+    case 'sub': { app.meta.sub[el.dataset.key] = el.dataset.value; saveMeta(); app.render(); const v = $('#view'); v.classList.remove('page-in'); void v.offsetWidth; v.classList.add('page-in'); return true; }
     case 'close': closeSheet(); return true;
     case 'bell': app.meta.unread = 0; saveMeta(); el.querySelector('b')?.remove(); return true;
     case 'today-more': if (G.markTodaySeen(s, app.meta.mode)) save(); return true;
@@ -195,6 +197,16 @@ document.addEventListener('keydown', (event) => {
   if (event.metaKey || event.ctrlKey || event.altKey || !app.state) return;
   if (event.target.closest?.('input, textarea, select, [contenteditable]') || document.querySelector('dialog[open]')) return;
   if (event.key === '?') { event.preventDefault(); showShortcuts(); return; }
+  // 5.13: ← / → step through the tabs of the current page.
+  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+    const tabs = [...(document.querySelector('#view .segmented[role="tablist"]')?.querySelectorAll('button') || [])];
+    if (tabs.length) {
+      event.preventDefault();
+      const i = Math.max(0, tabs.findIndex((b) => b.getAttribute('aria-selected') === 'true'));
+      tabs[G.tabCycle(i, tabs.length, event.key === 'ArrowRight')].click();
+    }
+    return;
+  }
   const tab = ['train', 'safari', 'trainer', 'shop', 'more'][Number(event.key) - 1];
   if (tab) { app.meta.tab = tab; saveMeta(); app.render(); window.scrollTo(0, 0); }
 });

@@ -47,6 +47,9 @@ export function render(view) {
   const today = G.todayMinutes(state); const goal = G.dailyGoal(state);
   const bonuses = d ? [ep.day && ['☀️', `Pokémon des Tages: +${G.DAY_BONUS_PERCENT} % EP`], ep.naturePct && ['🙂', `Wesen ${G.natureOf(partner).name}: +${ep.naturePct} % EP`], ep.habitat && ['🏡', 'Voller Lebensraum'], state.activeBerryBuff === 'epbeere' && ['⚡', 'EP-Beere: doppelte EP'], state.expShareEnabled && ['🔗', 'EP-Teiler an']].filter(Boolean) : [];
   const evolvesNow = d?.nextEvolutionName && d.toNextEvolution <= gain;
+  // 5.13: your own duration stays as a chip.
+  const chips = G.durationChips(app.meta.lastCustom);
+  const showSlider = !!app.meta.customTime || !chips.includes(minutes);
   view.innerHTML = `
     ${running ? '' : pageHead('Training', today >= goal ? `Tagesziel erreicht · ${today} Min heute` : `Noch ${goal - today} Min bis zum Tagesziel`, '', `<div class="row">${todayStrip(state, mode)}${bell()}</div>`)}
     ${banner && banner.ok && banner.recap && app.meta.lastResult && !running ? resultCard(app.meta.lastResult, state) : banner ? `<div class="banner ${banner.ok ? '' : 'bad'}"><p>${esc(banner.text)}</p>${banner.recap ? '<button class="link" data-action="recap">Trainingsmoment ansehen</button>' : ''}<button class="icon-btn small" data-action="dismiss-banner" aria-label="Hinweis schließen">×</button></div>` : ''}
@@ -68,14 +71,14 @@ export function render(view) {
         ${running ? `
           <div class="row center">
             ${s.inBreak ? '' : `<button class="pill quiet" data-action="everstone" ${s.everstoneUsed && !s.pausedUntil ? 'disabled' : ''}>${s.pausedUntil ? 'Weiter trainieren' : s.everstoneUsed ? 'Ewigstein verbraucht' : 'Ewigstein-Pause (3 Min)'}</button>`}
-            <button class="pill danger" data-action="giveup">${s.inBreak ? 'Kette beenden' : 'Abbrechen'}</button>
+            <button class="pill quiet hold-cancel" data-hold="giveup" title="Zum Abbrechen gedrückt halten"><i aria-hidden="true"></i>${s.inBreak ? 'Kette beenden' : 'Abbrechen'} (halten)</button>
           </div>` : app.meta.pomodoroEnabled ? `
           <p class="small muted">Pomodoro-Kette: ${G.normalizePlan(app.meta.pomodoro).rounds} × ${G.normalizePlan(app.meta.pomodoro).focusMinutes} Min, ${G.normalizePlan(app.meta.pomodoro).breakMinutes} Min Pause</p>` : `
           <div class="durations" role="group" aria-label="Dauer">
-            ${PRESETS.map((m) => `<button class="chip" data-action="minutes" data-minutes="${m}" aria-pressed="${m === minutes}" title="${esc(chipPreview(state, partner, d, m))}">${m} Min</button>`).join('')}
-            <button class="chip" data-action="custom-time" aria-pressed="${G.durationShowsSlider(minutes, app.meta.customTime)}" title="Freie Zeit von 5 bis 180 Minuten">${PRESETS.includes(minutes) ? 'Eigene' : `${minutes} Min`}</button>
+            ${chips.map((m) => `<button class="chip" data-action="minutes" data-minutes="${m}" aria-pressed="${m === minutes}" title="${esc(chipPreview(state, partner, d, m))}">${m} Min</button>`).join('')}
+            <button class="chip" data-action="custom-time" aria-pressed="${showSlider}" title="Freie Zeit von 5 bis 180 Minuten">${chips.includes(minutes) ? 'Eigene' : `${minutes} Min`}</button>
           </div>
-          ${G.durationShowsSlider(minutes, app.meta.customTime) ? `<input type="range" min="5" max="180" step="5" value="${minutes}" id="minutes" aria-label="Dauer in Minuten">` : ''}`}
+          ${showSlider ? `<input type="range" min="5" max="180" step="5" value="${minutes}" id="minutes" aria-label="Dauer in Minuten">` : ''}`}
       </div>
       <div class="side">
         ${mode === 'owned' && d ? `
@@ -146,7 +149,7 @@ export function render(view) {
         </div>`}
       </div>
     </div>
-    ${running ? '' : `<div class="start-bar"><button class="start" data-action="start">${mode === 'wild' ? `Ins hohe Gras gehen · ${minutes} Min` : `${esc(d?.name ?? 'Training')} trainieren · ${minutes} Min`} · bis ${new Date(Date.now() + minutes * 60000).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}</button></div>`}`;
+    ${running ? '' : `<div class="start-bar"><button class="start" data-action="start">${esc(G.startLabel(mode === 'wild', d?.name ?? 'Training', G.activeTask(state)?.title ?? null, minutes))} · bis ${new Date(Date.now() + minutes * 60000).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}</button></div>`}`;
 
   view.querySelectorAll('.count-up').forEach((el) => {
     const to = Number(el.dataset.to); const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -157,7 +160,15 @@ export function render(view) {
   });
   const range = $('#minutes', view);
   range?.addEventListener('input', () => { app.meta.minutes = Number(range.value); saveMeta(); $('#clock').textContent = `${String(app.meta.minutes).padStart(2, '0')}:00`; const pct = $('#lcd-pct'); if (pct) pct.textContent = `${app.meta.minutes} Min`; });
-  range?.addEventListener('change', () => app.render());
+  range?.addEventListener('change', () => { if (G.rememberCustom(app.meta.minutes)) { app.meta.lastCustom = app.meta.minutes; app.meta.customTime = false; saveMeta(); } app.render(); });
+  // 5.13: cancelling needs a long press.
+  view.querySelectorAll('[data-hold]').forEach((btn) => {
+    let timer = null;
+    const stop = () => { clearTimeout(timer); timer = null; btn.classList.remove('holding'); };
+    btn.addEventListener('pointerdown', (e) => { e.preventDefault(); btn.classList.add('holding'); timer = setTimeout(() => { stop(); handle(btn.dataset.hold, btn); }, G.CANCEL_HOLD_SECONDS * 1000); });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => btn.addEventListener(ev, () => { if (timer) { stop(); toast('Zum Abbrechen gedrückt halten.'); } }));
+    btn.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handle(btn.dataset.hold, btn); } });
+  });
   view.querySelectorAll('[data-plan]').forEach((input) => input.addEventListener('change', () => {
     app.meta.pomodoro = G.normalizePlan({ ...app.meta.pomodoro, [input.dataset.plan]: Number(input.value) });
     saveMeta(); app.render();
@@ -475,6 +486,7 @@ export function handle(action, el) {
     case 'tasks': tasksSheet(); return true;
     case 'task-toggle': G.toggleTask(state, el.dataset.id); save(); tasksSheet(); app.render(); return true;
     case 'task-delete': G.deleteTask(state, el.dataset.id); save(); tasksSheet(); app.render(); return true;
+    case 'result-pause': if (!app.session) { meta.breakEndsAt = Date.now() + G.RESULT_PAUSE_MINUTES * 60000; meta.banner = null; saveMeta(); app.render(); } return true;
     case 'everstone': if (app.session && G.toggleEverstone(app.session)) { saveSession(); app.render(); } return true;
     case 'berry': if (G.activateBerry(state, el.dataset.id, meta.mode, !!app.session)) { save(); app.render(); } return true;
     case 'return-berry': if (G.returnBerry(state, !!app.session)) { save(); app.render(); } return true;
@@ -487,7 +499,7 @@ export function handle(action, el) {
     case 'extras': meta.extrasOpen = !el.parentElement.open; saveMeta(); return false;
     case 'partner-details': meta.partnerDetails = !el.parentElement.open; saveMeta(); return false;
     case 'custom-time': {
-      if (app.session || !PRESETS.includes(meta.minutes)) return true;
+      if (app.session || !G.durationChips(meta.lastCustom).includes(meta.minutes)) return true;
       meta.customTime = !meta.customTime; saveMeta(); app.render(); return true;
     }
     case 'habitat-quick': { const msg = G.placeInHabitat(app.state, el.dataset.id, G.habitatByID(el.dataset.habitat)); if (msg) { save(); toast(msg); el.remove(); } return true; }
@@ -602,6 +614,7 @@ function resultCard(r, state) {
     </div>
     <div class="stack result-actions">
       ${lastRound() ? '<button class="pill small" data-action="again">↻ Nochmal</button>' : ''}
+      ${G.resultShowsPause(G.ensureJourney(state).autoBreakMinutes, false) && !(app.meta.breakEndsAt > Date.now()) ? `<button class="pill quiet small" data-action="result-pause">☕ ${G.RESULT_PAUSE_MINUTES} Min Pause</button>` : ''}
       <button class="link" data-action="recap">Details</button>
     </div>
     <button class="icon-btn small" data-action="dismiss-banner" aria-label="Ergebnis schließen">×</button>

@@ -937,3 +937,21 @@ kbd { font: 700 0.85rem ui-monospace, SFMono-Regular, Menlo, monospace; padding:
 @media (prefers-reduced-motion: reduce) {
   .lcd.lcd-on, .lcd.lcd-off, .dig-idle b, .hatch-pop img, .hatch-pop .shell, .case-slot.won span::after, .line-card.bought, .line-card.bought::after, .empty-state .mascot i, .levelup, .levelup img, .coins.bump { animation: none !important; }
 }
+
+/* 5.13 – Ruhe & Überblick */
+.topbar .streak { margin-left: 8px; }
+.hold-cancel { position: relative; overflow: hidden; color: var(--ball-red, #E3463B); user-select: none; -webkit-user-select: none; touch-action: none; }
+.hold-cancel i { position: absolute; inset: 0; width: 0; background: rgba(227, 70, 59, 0.25); pointer-events: none; }
+.hold-cancel.holding i { width: 100%; transition: width 1s linear; }
+.cards.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.trip-picks { gap: 8px; }
+.trip-pick { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: rgba(42, 161, 152, 0.1); font-size: 0.8rem; }
+.trip-pick img { width: 32px; height: 32px; image-rendering: pixelated; }
+.trip-pick select { font-size: 0.75rem; }
+.panel.pair { gap: 10px; }
+.panel.pair img { width: 40px; height: 40px; image-rendering: pixelated; }
+.panel.pair > div { display: grid; flex: 1; }
+.dex-regions { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px 10px; margin: 6px 0 10px; }
+.league-row .locked img { filter: grayscale(1); opacity: 0.5; }
+.league-row .next img { outline: 2px solid #D9604A; outline-offset: 2px; border-radius: 50%; }
+@media (prefers-reduced-motion: reduce) { .hold-cancel.holding i { transition: none; } }
